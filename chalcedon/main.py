@@ -197,13 +197,6 @@ def retr_defl(xposgrid, yposgrid, indxpixlelem, dictchalinpt, *args, **kwargs):
             xposlens = dictchalinpt['xpossubh'][k]
             yposlens = dictchalinpt['ypossubh'][k]
             defllens = dictchalinpt['ypossubh'][k]
-            
-            print('xposlens')
-            summgene(xposlens)
-            print('yposlens')
-            summgene(yposlens)
-            print('defllens')
-            summgene(defllens)
 
         # dictionary of parameter names for the component
         dictstrg = dict()
