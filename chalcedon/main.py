@@ -133,10 +133,37 @@ def retr_deflextr(xposgrid, yposgrid, sher, sang):
     return deflextr
 
 
-def retr_defl(xposgrid, yposgrid, indxpixlelem, dictchalinpt):
+def retr_defl(xposgrid, yposgrid, indxpixlelem, dictchalinpt, *args, **kwargs):
     '''
     Return deflection due to a main halo without a cutoff radius and subhalos with cutoff radii
     '''
+
+    if not isinstance(dictchalinpt, dict):
+        xposlens = dictchalinpt
+        if len(args) < 2:
+            raise TypeError('Legacy retr_defl() call requires xpos, ypos, and deflection scale inputs.')
+        yposlens = args[0]
+        defllens = args[1]
+        asca = kwargs.get('asca', None)
+        ellphost = kwargs.get('ellp', 0.)
+
+        if asca is None:
+            dictchalinpt = {
+                'xposhost': xposlens,
+                'yposhost': yposlens,
+                'beinhost': defllens,
+                'ellphost': ellphost,
+            }
+        else:
+            dictchalinpt = {
+                'xposhost': 0.,
+                'yposhost': 0.,
+                'beinhost': 0.,
+                'ellphost': 0.,
+                'xpossubh': np.atleast_1d(xposlens),
+                'ypossubh': np.atleast_1d(yposlens),
+                'ascasubh': np.atleast_1d(asca),
+            }
     
     dictchaloutp = dict()
     
@@ -152,7 +179,6 @@ def retr_defl(xposgrid, yposgrid, indxpixlelem, dictchalinpt):
         numbsubh = dictchalinpt['xpossubh'].size
         numbiter += numbsubh
     
-    print('temp: find out boolasym')
     dictchalinpt['boolasym'] = True
     
     indxiter = np.arange(numbiter)
@@ -184,10 +210,6 @@ def retr_defl(xposgrid, yposgrid, indxpixlelem, dictchalinpt):
         for name in ['xpos', 'ypos', 'ellp', 'bein', 'deflxpos', 'deflypos']:
             dictstrg[name] = name + strgcomp
         
-
-        print('dictchalinpt')
-        print(dictchalinpt.keys())
-        
         # translate the grid
         ## horizontal distance to the component [arcsec]
         xposgridtran = xposgrid[indxpixlelem] - xposlens
@@ -203,11 +225,15 @@ def retr_defl(xposgrid, yposgrid, indxpixlelem, dictchalinpt):
         # main halo
         if u == 0:
             axisrati = 1. - dictchalinpt[dictstrg['ellp']]
-            facteccc = np.sqrt(1. - axisrati**2)
+            axisrati = np.clip(axisrati, 1e-6, 1. - 1e-6)
+            facteccc = np.sqrt(max(1e-12, 1. - axisrati**2))
             factrcor = np.sqrt(axisrati**2 * xposgridrttr**2 + yposgridrttr**2)
+            factrcor = np.where(factrcor == 0., 1e-30, factrcor)
+            argatanh = facteccc * yposgridrttr / factrcor
+            argatanh = np.clip(argatanh, -1. + 1e-12, 1. - 1e-12)
             
             deflxposrttr = dictchalinpt[dictstrg['bein']] * axisrati / facteccc *  np.arctan(facteccc * xposgridrttr / factrcor)
-            deflyposrttr = dictchalinpt[dictstrg['bein']] * axisrati / facteccc * np.arctanh(facteccc * yposgridrttr / factrcor)
+            deflyposrttr = dictchalinpt[dictstrg['bein']] * axisrati / facteccc * np.arctanh(argatanh)
         
         # subhalos
         else:
@@ -241,10 +267,10 @@ def retr_defl(xposgrid, yposgrid, indxpixlelem, dictchalinpt):
    
         dictchaloutp['deflhost'] = np.vstack((dictchaloutp['deflxposhost'], dictchaloutp['deflyposhost'])).T
         
-        if numbiter > 1 and u == 0:
+        if u == 0:
             dictchaloutp['defltotl'] = np.copy(dictchaloutp['deflhost'])
         else:
-            dictchaloutp['defltotl'] += defllens
+            dictchaloutp['defltotl'] += dictchaloutp['deflhost']
         
 
     return dictchaloutp
