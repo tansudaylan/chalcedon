@@ -40,6 +40,16 @@ def cnfg_microlens():
                                            indxpixlelem=indxpixlelem, \
                                            dictchalinpt=dictchalinpt, \
                                           )
+    return dictchaloutp
 
-globals().get(sys.argv[1])(*sys.argv[2:])
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        raise SystemExit('Usage: python examples.py <config_name> [args...]')
+
+    func = globals().get(sys.argv[1])
+    if func is None:
+        raise SystemExit(f'Unknown example configuration: {sys.argv[1]}')
+
+    func(*sys.argv[2:])
 

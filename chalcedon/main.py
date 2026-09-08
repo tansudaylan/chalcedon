@@ -269,13 +269,54 @@ def retr_defl(xposgrid, yposgrid, indxpixlelem, dictchalinpt, *args, **kwargs):
     return dictchaloutp
 
 
+def retr_magn(xposgrid, yposgrid, deflfield):
+    """Return a simple magnification map from a deflection field on a structured grid."""
+
+    deflfield = np.asarray(deflfield)
+    if deflfield.shape[-1] != 2:
+        raise ValueError('deflfield must have shape (N, 2) for the x/y deflection components.')
+
+    xposgrid = np.asarray(xposgrid)
+    yposgrid = np.asarray(yposgrid)
+    xuniq = np.unique(xposgrid)
+    yuniq = np.unique(yposgrid)
+    if xuniq.size < 2 or yuniq.size < 2:
+        return np.ones_like(xposgrid, dtype=float)
+
+    xshape = xuniq.size
+    yshape = yuniq.size
+    deflx = deflfield[:, 0].reshape(xshape, yshape)
+    defly = deflfield[:, 1].reshape(xshape, yshape)
+
+    dx = np.abs(np.diff(xuniq[:2]))[0] if xuniq.size > 1 else 1.
+    dy = np.abs(np.diff(yuniq[:2]))[0] if yuniq.size > 1 else 1.
+
+    ddeflx_dx = np.gradient(deflx, dx, axis=0)
+    ddeflx_dy = np.gradient(deflx, dy, axis=1)
+    ddefly_dx = np.gradient(defly, dx, axis=0)
+    ddefly_dy = np.gradient(defly, dy, axis=1)
+
+    jac = np.stack(
+        [
+            np.stack([1. - ddeflx_dx, -ddeflx_dy], axis=-1),
+            np.stack([-ddefly_dx, 1. - ddefly_dy], axis=-1),
+        ],
+        axis=-2,
+    )
+    detjac = np.linalg.det(jac)
+    magn = np.abs(1. / np.clip(detjac, 1e-12, None))
+    return magn
+
+
 def retr_caustics(xposgrid, yposgrid, indxpixlelem, dictchalinpt):
-   
+    """Compute the deflection field and return a magnification map plus contour candidates."""
+
     from skimage import measure
-    
+
     dictchaloutp = retr_defl(xposgrid, yposgrid, indxpixlelem, dictchalinpt)
-    magn = retr_magn()
-    
+    magn = retr_magn(xposgrid, yposgrid, dictchaloutp['defltotl'])
+
     cont = measure.find_contours(magn, 0.8)
-    print('cont')
-    print(cont)
+    dictchaloutp['magn'] = magn
+    dictchaloutp['contours'] = cont
+    return dictchaloutp
