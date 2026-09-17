@@ -124,7 +124,7 @@ def retr_deflextr(xposgrid, yposgrid, sher, sang):
     '''    
     
     factcosi = sher * np.cos(2. * sang)
-    factsine = sher * np.cos(2. * sang)
+    factsine = sher * np.sin(2. * sang)
     deflxpos = factcosi * xposgrid + factsine * yposgrid
     deflypos = factsine * xposgrid - factcosi * yposgrid
     
@@ -304,7 +304,7 @@ def retr_magn(xposgrid, yposgrid, deflfield):
         axis=-2,
     )
     detjac = np.linalg.det(jac)
-    magn = np.abs(1. / np.clip(detjac, 1e-12, None))
+    magn = 1. / np.maximum(np.abs(detjac), 1e-12)
     return magn
 
 
