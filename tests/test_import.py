@@ -15,12 +15,12 @@ def test_import_chalcedon_main_module():
 
 
 def test_examples_module_is_import_safe(monkeypatch):
-    examples_path = Path(__file__).resolve().parents[1] / 'examples' / 'examples.py'
-    monkeypatch.setattr(sys, 'argv', ['examples.py', 'cnfg_microlens'])
+    examples_path = Path(__file__).resolve().parents[1] / 'examples' / 'microlens_caustic.py'
+    monkeypatch.setattr(sys, 'argv', ['microlens_caustic.py'])
 
     spec = importlib.util.spec_from_file_location('chalcedon_examples_test', examples_path)
     module = importlib.util.module_from_spec(spec)
 
     spec.loader.exec_module(module)
 
-    assert hasattr(module, 'cnfg_microlens')
+    assert hasattr(module, 'evaluate_lens_model')

@@ -18,10 +18,15 @@ export CHALCEDON_PATH=/path/to/chalcedon
 
 ## Minimal usage
 
-```python
-import chalcedon
-# Use the package-level lensing functions and simulation entry points.
+The runnable analytic example evaluates a host lens, one subhalo, and external shear on a normalized angular grid:
+
+```bash
+python examples/microlens_caustic.py --typefileplot png
 ```
+
+![Chalcedon analytic deflection and magnification maps](examples/microlens_caustic.png)
+
+The left panel exposes the intermediate deflection amplitude returned by `chalcedon.retr_caustics()`. The right panel shows the resulting magnification map and its contour candidates. Host and subhalo positions are marked explicitly. This is a deterministic lens-model prediction under the parameters encoded in the example, not an observed image.
 
 ## Output and diagnostics
 A useful run should produce the input lensing configuration, relevant intermediate geometric quantities, and the final simulated or diagnostic image output in a reproducible and inspectable form.
