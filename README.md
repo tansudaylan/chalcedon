@@ -11,7 +11,10 @@ The repository is focused on lensing calculations and their visualization rather
 ```bash
 cd /path/to/chalcedon
 python -m pip install -e .
+export CHALCEDON_PATH=/path/to/chalcedon
 ```
+
+`CHALCEDON_PATH` identifies the repository root. Keep runtime inputs in `data/` and generated pipeline outputs in `visuals/`; both directories are ignored by Git.
 
 ## Minimal usage
 
