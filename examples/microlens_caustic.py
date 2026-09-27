@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Visualize Chalcedon's analytic lens deflection and magnification maps."""
 
-import argparse
 from pathlib import Path
 
 import matplotlib
@@ -12,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import chalcedon
+from tdpy.cli import parse_plot_arguments
 
 
 def evaluate_lens_model(
@@ -128,16 +128,10 @@ def run_example(output_path: Path) -> dict:
     return output
 
 
-def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+def parse_arguments():
+    return parse_plot_arguments(
         description="Plot Chalcedon's analytic deflection and magnification maps."
     )
-    parser.add_argument(
-        "--typefileplot",
-        choices=("png", "pdf"),
-        default="png",
-    )
-    return parser.parse_args()
 
 
 def main() -> int:
