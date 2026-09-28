@@ -4,7 +4,7 @@
 Chalcedon is a gravitational-lensing simulation and modeling library. It provides the tooling needed to create and inspect lensing geometries, source configurations, and derived image-plane diagnostics.
 
 ## Scope
-The repository is focused on lensing calculations and their visualization rather than on broader astronomical utility code. It fits in the ecosystem as a domain-specific simulation layer used by imaging and inference workflows that require physically interpretable lensing diagnostics.
+Use Chalcedon to calculate lens deflections and magnifications, identify critical-curve contours, and visualize how host lenses, subhalos, and external shear shape an image-plane signal.
 
 ## Installation
 
