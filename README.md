@@ -1,6 +1,6 @@
 # Chalcedon
 
-## Scientific purpose
+## Purpose
 Chalcedon is a gravitational-lensing simulation and modeling library. It provides the tooling needed to create and inspect lensing geometries, source configurations, and derived image-plane diagnostics.
 
 ## Scope
