@@ -30,6 +30,3 @@ The left panel exposes the intermediate deflection amplitude returned by `chalce
 
 ## Output and diagnostics
 A useful run should produce the input lensing configuration, relevant intermediate geometric quantities, and the final simulated or diagnostic image output in a reproducible and inspectable form.
-
-## Development status
-Chalcedon is maintained as a focused gravitational-lensing simulation library. It is not a generic astronomy toolbox and should remain structured around its specific lensing workflows and visual diagnostics.
