@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Visualize Chalcedon's analytic lens deflection and magnification maps."""
 
+from tdpy.verbosity import print
+
 from pathlib import Path
 
 import matplotlib
