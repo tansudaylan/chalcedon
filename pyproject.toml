@@ -20,7 +20,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Astronomy"
 ]
 dependencies = [
-  "aspendos",
+  "astropy",
   "numpy",
   "scipy",
   "scikit-image",
