@@ -139,6 +139,10 @@ def evaluate_self_lensing_model(
     semimajor_axis = (G * total_mass * period_seconds**2 / (4.0 * np.pi**2)) ** (1.0 / 3.0)
     source_radius = source_radius_solar * R_sun
     semimajor_axis_source_radii = (semimajor_axis / source_radius).decompose().value
+    cosine_inclination = impact_parameter / semimajor_axis_source_radii
+    if cosine_inclination >= 1.0:
+        raise ValueError("impact_parameter must be smaller than the orbital semimajor axis")
+    sine_inclination = np.sqrt(1.0 - cosine_inclination**2)
     einstein_radius = np.sqrt(4.0 * G * lens_mass_solar * M_sun * semimajor_axis / c**2)
     einstein_radius_ratio = (einstein_radius / source_radius).decompose().value
 
@@ -154,6 +158,7 @@ def evaluate_self_lensing_model(
     orbital_phase = 2.0 * np.pi * time_days / period_days
     lens_x = semimajor_axis_source_radii * np.sin(orbital_phase)
     lens_y = impact_parameter * np.cos(orbital_phase)
+    lens_z = semimajor_axis_source_radii * sine_inclination * np.cos(orbital_phase)
     pixels_per_stellar_radius = 0.5 * (grid_size - 1)
     sample_coordinates = np.vstack(
         (
@@ -162,6 +167,7 @@ def evaluate_self_lensing_model(
         )
     )
     excess_flux = map_coordinates(excess_flux_grid, sample_coordinates, order=1, mode="constant", cval=0.0)
+    excess_flux = np.where(lens_z > 0.0, excess_flux, 0.0)
     return 1.0 + excess_flux / unocculted_flux
 
 

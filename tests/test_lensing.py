@@ -108,7 +108,7 @@ def test_einstein_radius_and_truncated_mass_scalings():
     assert chalcedon.retr_adislenssour(1., 2., 0.5, 1.) == pytest.approx(2. - 1.5 / 2.)
 
 
-def test_self_lensing_model_produces_symmetric_brightening():
+def test_self_lensing_model_brightens_symmetrically_near_foreground_conjunction():
     time_days = np.linspace(-0.5, 0.5, 101)  # [day]
 
     relative_flux = chalcedon.evaluate_self_lensing_model(
@@ -119,3 +119,18 @@ def test_self_lensing_model_produces_symmetric_brightening():
     assert np.argmax(relative_flux) == time_days.size // 2
     np.testing.assert_allclose(relative_flux, relative_flux[::-1], atol=1e-12)
     assert np.max(relative_flux) > 1.0005
+
+
+def test_self_lensing_is_zero_at_far_side_conjunction():
+    period_days = 30.0  # [day]
+    time_days = np.linspace(0.0, period_days, 201)  # [day]
+
+    relative_flux = chalcedon.evaluate_self_lensing_model(
+        time_days, period_days=period_days, source_radius_solar=1.0,
+        source_mass_solar=1.0, lens_mass_solar=0.6, impact_parameter=0.2,
+        grid_size=301,
+    )
+
+    assert relative_flux[0] > 1.0005
+    assert relative_flux[-1] > 1.0005
+    assert relative_flux[100] == pytest.approx(1.0)
