@@ -1,10 +1,10 @@
 # Chalcedon
 
 ## Purpose
-Chalcedon is a gravitational-lensing simulation and modeling library. It provides the tooling needed to create and inspect lensing geometries, source configurations, and derived image-plane diagnostics.
+Chalcedon puts the shared gravitational-lensing calculations in one place. Give it a lens, source, subhalo, and shear configuration, and it computes the deflections, magnifications, critical curves, and caustics that follow.
 
 ## Scope
-Use Chalcedon to calculate lens deflections and magnifications, identify critical-curve contours, and visualize how host lenses, subhalos, and external shear shape an image-plane signal.
+Use Chalcedon to calculate lens deflections and magnifications, identify critical-curve contours, and see how host lenses, subhalos, and external shear shape an image-plane signal.
 
 Chalcedon is the single upstream home for the gravitational-lensing engines shared across this ecosystem's repositories (PCAT, assos, ephesos, aspendos). It owns:
 - Singular isothermal ellipsoid (`retr_deflsie`) and Plummer-softened point-mass (`retr_deflplum`) deflections, truncated- and untruncated-NFW subhalo deflections (`retr_deflsubh`), external shear (`retr_deflextr`), and a combined host+subhalo+shear evaluator (`retr_defl`).
