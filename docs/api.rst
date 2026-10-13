@@ -1,6 +1,18 @@
 API reference
 =============
 
+Native strong-lens models
+-------------------------
+
+.. automodule:: chalcedon.strong_lensing
+   :members: LensModel, LensEquationSolver, LensCosmo, LensModelExtensions
+
+Native image rendering
+----------------------
+
+.. automodule:: chalcedon.imaging
+   :members: LightModel, Coordinates, PixelGrid, PSF, ImageModel, PointSource, magnitude2amplitude, magnitude2cps, cps2magnitude
+
 Lensing and magnification
 -------------------------
 

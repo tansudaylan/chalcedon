@@ -1,10 +1,11 @@
 Chalcedon
 =========
 
-Chalcedon provides the shared gravitational-lensing and self-lensing
-calculations used by the astrophysics software stack. Its routines predict
+I use Chalcedon to follow light through explicit lens and source models. Its
+shared gravitational-lensing and self-lensing calculations predict
 deflections, magnifications, critical curves, caustics, and compact-lens
-photometric signatures from explicit lens and source parameters.
+photometric signatures. Keeping the model inputs visible makes it easier to see
+which assumptions shape the predicted image.
 
 .. toctree::
    :maxdepth: 2

@@ -1,10 +1,10 @@
 # Chalcedon
 
 ## Purpose
-Chalcedon puts the shared gravitational-lensing calculations in one place. Give it a lens, source, subhalo, and shear configuration, and it computes the deflections, magnifications, critical curves, and caustics that follow.
+I use Chalcedon to follow light through a specified lens configuration. Give it a host lens, a source, subhalos, and external shear, and calculate the resulting deflections, magnifications, critical curves, and caustics. The arcs look better when I can also inspect the lens equation that produced them.
 
 ## Scope
-Use Chalcedon to calculate lens deflections and magnifications, identify critical-curve contours, and see how host lenses, subhalos, and external shear shape an image-plane signal.
+The calculations range from analytic deflection profiles to strong-lens image rendering. I keep them here so the modeling and inference packages can use the same lens physics.
 
 Chalcedon is the single upstream home for the gravitational-lensing engines shared across this ecosystem's maintained repositories (PCAT, Ephesos, and Pergamon). It owns:
 - Singular isothermal ellipsoid (`retr_deflsie`) and Plummer-softened point-mass (`retr_deflplum`) deflections, truncated- and untruncated-NFW subhalo deflections (`retr_deflsubh`), external shear (`retr_deflextr`), and a combined host+subhalo+shear evaluator (`retr_defl`).
@@ -12,6 +12,14 @@ Chalcedon is the single upstream home for the gravitational-lensing engines shar
 - Truncated-halo mass kernels (`retr_mcutfrommscl`, `retr_mcut`).
 - Einstein-radius and self-lensing utilities (`retr_radieins_inft`, `retr_radieinsfromsmax`, `retr_radieinssbin`, `retr_amplslen`, `retr_magnpntslens`, `evaluate_self_lensing_model`) used by ephesos and PCAT.
 - Cosmological lensing distances and critical density (`retr_adislenssour`, `retr_mdencrit`, `retr_ratimassbeinsqrd`).
+
+## Native strong-lens models
+
+`chalcedon.strong_lensing` provides composable `LensModel`, `LensEquationSolver`, `LensCosmo`, and `LensModelExtensions` interfaces. They calculate deflections, source-plane coordinates, numerical Jacobians, convergence, magnification, image positions, critical curves, and caustics. Supported mass profiles are SIS, SIE, EPL, point mass, shear, convergence, NFW, truncated NFW, and elliptical NFW/Hernquist. Coordinates, Einstein radii, and angular scale radii use arcseconds. Multiple lens planes use distance-weighted ray propagation with Astropy cosmology.
+
+`chalcedon.imaging` supplies flux-normalized Sersic, Gaussian, Hernquist, interpolated-image, and Cartesian-shapelet light models, angular coordinate grids, point sources, and PSF convolution. The `ImageModel` evaluates the lens equation on supersampled coordinates, convolves the fine scene, and sums subpixel count rates into detector pixels. Mejiro can select these calculations with `backend="chalcedon"` without loading Lenstronomy. Mejiro also retains its separate Lenstronomy backend, which remains the default.
+
+Elliptical halo profiles are integrated from their projected density, including inherited CSE parameter conventions. Their labels do not imply the old CSE approximation is used. Sersic half-light constants use the inverse incomplete gamma function. Finite-difference Jacobians and grid-seeded image solving require convergence checks for a user's accuracy requirements. Unsupported profiles, extinction/special rendering options, and JAX execution raise explicitly. Native NumPy/SciPy calculations do not need a separate lensing engine.
 
 ## Installation
 
@@ -50,5 +58,5 @@ Install `python -m pip install -e '.[bokeh]'` to create the interactive companio
 
 `retr_mcutfrommscl(radius_ratio)` accepts scalars or NumPy arrays and returns the dimensionless mass ratio. At equal cutoff and scale radii, the ratio is $\pi/4 - 1/2$. The mass increases monotonically with cutoff radius for the assumed truncated profile. Use `retr_mcut` to calculate the corresponding halo mass from the profile normalization, angular radii, lens distance, and critical surface density. These are analytic model predictions, not measured halo masses. The example, documentation, and mathematical tests were transferred from Aspendos.
 
-## Output and diagnostics
-A useful run should produce the input lensing configuration, relevant intermediate geometric quantities, and the final simulated or diagnostic image output in a reproducible and inspectable form.
+## Inspecting the result
+Look at the deflections and magnification alongside the rendered image. A convincing-looking arc is more useful when I can trace it back to the supplied mass and light profiles and check the numerical resolution.
