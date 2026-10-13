@@ -108,6 +108,24 @@ def test_einstein_radius_and_truncated_mass_scalings():
     assert chalcedon.retr_adislenssour(1., 2., 0.5, 1.) == pytest.approx(2. - 1.5 / 2.)
 
 
+def test_truncation_mass_normalization_at_unit_ratio():
+    assert chalcedon.retr_mcutfrommscl(1.0) == pytest.approx(np.pi / 4.0 - 0.5)
+
+
+def test_truncation_mass_increases_with_radius_ratio():
+    radius_ratio = np.logspace(-2.0, 2.0, 200)
+    mass_ratio = chalcedon.retr_mcutfrommscl(radius_ratio)
+
+    assert np.isfinite(mass_ratio).all()
+    assert np.all(np.diff(mass_ratio) > 0)
+
+
+@pytest.mark.parametrize("radius_ratio", [0.0, -1.0])
+def test_truncation_mass_rejects_nonpositive_ratio(radius_ratio):
+    with pytest.raises(ValueError, match="positive"):
+        chalcedon.retr_mcutfrommscl(radius_ratio)
+
+
 def test_self_lensing_model_brightens_symmetrically_near_foreground_conjunction():
     time_days = np.linspace(-0.5, 0.5, 101)  # [day]
 

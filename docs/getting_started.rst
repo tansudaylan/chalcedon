@@ -26,6 +26,33 @@ The maps are deterministic predictions under the parameters encoded in the
 example. The left panel shows the deflection field and the right panel shows
 the resulting magnification and candidate contour locations.
 
+Truncated-halo mass
+-------------------
+
+The enclosed-mass kernel accepts a positive cutoff-to-scale-radius ratio
+and returns the dimensionless mass ratio:
+
+.. code-block:: python
+
+   import numpy as np
+   from chalcedon import retr_mcutfrommscl
+
+   radius_ratio = np.logspace(-2, 2, 200)
+   mass_ratio = retr_mcutfrommscl(radius_ratio)
+
+At equal radii, the ratio is pi/4 - 1/2. Increasing the cutoff radius
+increases the enclosed mass for the assumed truncated profile. Use
+``retr_mcut(defs, asca, acut, adislens, mdencrit)`` to calculate the mass
+from profile and lensing-distance inputs.
+
+.. code-block:: console
+
+   python examples/plot_truncation_mass.py --typefileplot png
+
+Pass ``--typefileplot pdf`` for a vector figure. These calculations and
+the example now live in Chalcedon; use Chalcedon imports in place of
+the former Aspendos compatibility package.
+
 Reusable functions
 ------------------
 

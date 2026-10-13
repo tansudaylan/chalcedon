@@ -27,6 +27,9 @@ dependencies = [
   "tdpy"
 ]
 
+[project.optional-dependencies]
+bokeh = ["bokeh>=3.4"]
+
 [tool.setuptools.packages.find]
 include = ["chalcedon*"]
 
