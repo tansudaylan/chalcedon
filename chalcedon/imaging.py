@@ -7,6 +7,7 @@ import numpy as np
 from scipy.ndimage import map_coordinates, gaussian_filter, zoom
 from scipy.signal import fftconvolve
 from scipy.special import gamma, gammaincinv, eval_hermite, factorial
+from tdpy.numerics import gaussian_sigma_from_fwhm
 
 from .strong_lensing import ellipticity_to_axis_ratio, projected_halo_density, LensEquationSolver
 
@@ -200,7 +201,7 @@ class PSF:
                 kernel = kernel / kernel.sum() * self.input_kernel.sum()
             return fftconvolve(image, kernel, mode='same')
         if self.psf_type == 'GAUSSIAN':
-            sigma = self.kwargs['fwhm'] / (np.sqrt(8.0 * np.log(2.0)) * pixel_scale)
+            sigma = gaussian_sigma_from_fwhm(self.kwargs['fwhm']) / pixel_scale
             return gaussian_filter(image, sigma, mode='constant')
         return image
 

@@ -71,6 +71,17 @@ def test_native_sis_critical_curve_and_caustic_have_expected_geometry():
     np.testing.assert_allclose(np.hypot(source_x[main_curve], source_y[main_curve]), 0.0, atol=0.002)
 
 
+@pytest.mark.parametrize("fwhm, pixel_scale", [(0.2, 0.05), (0.27, 0.1)])
+def test_gaussian_psf_preserves_original_angular_to_pixel_width(fwhm, pixel_scale):
+    from scipy.ndimage import gaussian_filter
+
+    image = np.arange(63, dtype=float).reshape(7, 9)
+    sigma = fwhm / (np.sqrt(8.0 * np.log(2.0)) * pixel_scale)  # [pixel]
+    expected = gaussian_filter(image, sigma, mode='constant')
+    actual = PSF('GAUSSIAN', fwhm=fwhm).convolve(image, pixel_scale)
+    np.testing.assert_allclose(actual, expected, rtol=1e-14)
+
+
 def test_native_oversampling_preserves_gaussian_count_rate_and_psf_throughput():
     light = LightModel(['GAUSSIAN'])
     parameters = [{'amp': 3.0, 'sigma': 0.2}]
