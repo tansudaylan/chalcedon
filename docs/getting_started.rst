@@ -49,15 +49,14 @@ from profile and lensing-distance inputs.
 
    python examples/plot_truncation_mass.py --typefileplot png
 
-Pass ``--typefileplot pdf`` for a vector figure. These calculations and
-the example now live in Chalcedon; use Chalcedon imports in place of
-the former Aspendos compatibility package.
+Pass ``--typefileplot pdf`` for a vector figure. Import these calculations and
+examples from ``chalcedon``.
 
 Reusable functions
 ------------------
 
-Use ``retr_defl`` to combine host, subhalo, and shear contributions; use
-``retr_magn`` or ``retr_caustics`` to derive image-plane diagnostics. The same
-package provides Einstein-radius and self-lensing-amplitude calculations used
-by Ephesos and PCAT. The ``ttvfast`` integrator is not required for any of
-these lensing calculations.
+Use ``retr_defl`` to combine host, subhalo, and shear contributions. Use
+``retr_magn`` or ``retr_caustics`` to calculate image-plane magnification and
+caustics. Chalcedon also provides Einstein-radius and self-lensing-amplitude
+calculations used by Ephesos and PCAT. The ``ttvfast`` integrator is not
+required for these lensing calculations.

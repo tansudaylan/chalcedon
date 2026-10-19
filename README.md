@@ -29,7 +29,7 @@ python -m pip install -e .
 export CHALCEDON_PATH=/path/to/chalcedon
 ```
 
-`CHALCEDON_PATH` identifies the repository root. Keep runtime inputs in `data/` and generated pipeline outputs in `visuals/`; both directories are ignored by Git.
+`CHALCEDON_PATH` identifies the repository root. Keep runtime inputs in `data/` and generated pipeline outputs in `visuals/`. Both directories are ignored by Git.
 
 ## Minimal usage
 
@@ -38,6 +38,10 @@ The runnable analytic example evaluates a host lens, one subhalo, and external s
 ```bash
 python examples/microlens_caustic.py --typefileplot png
 ```
+
+The analytic example uses white backgrounds with black axes. Add
+`--typeplotback dark` for black backgrounds with white axes, or pass
+`typeplotback='dark'` to its `run_example()` function from Python.
 
 ![Chalcedon analytic deflection and magnification maps](examples/microlens_caustic.png)
 
@@ -52,11 +56,15 @@ python examples/plot_truncation_mass.py --typefileplot png
 python examples/plot_truncation_mass.py --typefileplot png --bokeh
 ```
 
+Add `--typeplotback dark` for black backgrounds with white axes in both the
+static and HTML figures. The Python entry points also accept
+`typeplotback='dark'` and inherit a surrounding TDpy theme when it is omitted.
+
 ![Dimensionless truncation mass across cutoff radius](examples/truncation_mass.png)
 
 Install `python -m pip install -e '.[bokeh]'` to create the interactive companion at `examples/truncation_mass.html`.
 
-`retr_mcutfrommscl(radius_ratio)` accepts scalars or NumPy arrays and returns the dimensionless mass ratio. At equal cutoff and scale radii, the ratio is $\pi/4 - 1/2$. The mass increases monotonically with cutoff radius for the assumed truncated profile. Use `retr_mcut` to calculate the corresponding halo mass from the profile normalization, angular radii, lens distance, and critical surface density. These are analytic model predictions, not measured halo masses. The example, documentation, and mathematical tests were transferred from Aspendos.
+`retr_mcutfrommscl(radius_ratio)` accepts scalars or NumPy arrays and returns the dimensionless mass ratio. At equal cutoff and scale radii, the ratio is $\pi/4 - 1/2$. The mass increases monotonically with cutoff radius for the assumed truncated profile. Use `retr_mcut` to calculate the corresponding halo mass from the profile normalization, angular radii, lens distance, and critical surface density. These are analytic model predictions, not measured halo masses.
 
 ## Inspecting the result
 Look at the deflections and magnification alongside the rendered image. A convincing-looking arc is more useful when I can trace it back to the supplied mass and light profiles and check the numerical resolution.

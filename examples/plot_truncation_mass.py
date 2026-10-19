@@ -11,8 +11,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from chalcedon import retr_mcutfrommscl
+from tdpy.plotting import plot_background_colors, save_plot, themed_plot
 
 
+@themed_plot
 def run_example(output_path):
     """Generate the dimensionless truncation-mass figure."""
 
@@ -26,7 +28,7 @@ def run_example(output_path):
         r"$a_{cut}=a_s$",
         xy=(1.0, retr_mcutfrommscl(1.0)),
         xytext=(1.6, 0.18),
-        arrowprops={"arrowstyle": "->", "color": "black"},
+        arrowprops={"arrowstyle": "->", "color": plot_background_colors()[1]},
     )
     axis.set_xscale("log")
     axis.set_yscale("log")
@@ -36,11 +38,12 @@ def run_example(output_path):
     figure.tight_layout()
 
     print(f"Writing to {output_path}...")
-    figure.savefig(output_path, dpi=300, bbox_inches="tight")
+    save_plot(figure, output_path, dpi=300, bbox_inches="tight")
     plt.close(figure)
     return radius_ratio, mass_ratio
 
 
+@themed_plot
 def run_bokeh_example(output_path):
     """Write an interactive version of the truncation-mass curve."""
 
@@ -81,6 +84,7 @@ def run_bokeh_example(output_path):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     add_plot_arguments(parser)
+    parser.add_argument('--typeplotback', choices=('white', 'dark'), default='white')
     parser.add_argument(
         "--bokeh",
         action="store_true",
@@ -88,9 +92,9 @@ def main() -> None:
     )
     arguments = parser.parse_args()
     output_path = Path(__file__).with_name(f"truncation_mass.{arguments.typefileplot}")
-    run_example(output_path)
+    run_example(output_path, typeplotback=arguments.typeplotback)
     if arguments.bokeh:
-        run_bokeh_example(Path(__file__).with_name("truncation_mass.html"))
+        run_bokeh_example(Path(__file__).with_name("truncation_mass.html"), typeplotback=arguments.typeplotback)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 
 from tdpy.verbosity import print
 
+import argparse
 from pathlib import Path
 
 import matplotlib
@@ -13,7 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import chalcedon
-from tdpy.cli import parse_plot_arguments
+from tdpy.cli import add_plot_arguments
+from tdpy.plotting import save_plot, themed_plot
 
 
 def evaluate_lens_model(
@@ -46,6 +48,7 @@ def evaluate_lens_model(
     return x_grid, y_grid, lens_parameters, output
 
 
+@themed_plot
 def run_example(output_path: Path) -> dict:
     """Plot the intermediate deflection and resulting magnification."""
 
@@ -120,20 +123,21 @@ def run_example(output_path: Path) -> dict:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Writing to {output_path}...")
-    figure.savefig(
+    save_plot(
+        figure,
         output_path,
         dpi=300 if output_path.suffix == ".png" else None,
         bbox_inches="tight",
-        facecolor="white",
     )
     plt.close(figure)
     return output
 
 
 def parse_arguments():
-    return parse_plot_arguments(
-        description="Plot Chalcedon's analytic deflection and magnification maps."
-    )
+    parser = add_plot_arguments(argparse.ArgumentParser(
+        description="Plot Chalcedon's analytic deflection and magnification maps."))
+    parser.add_argument('--typeplotback', choices=('white', 'dark'), default='white')
+    return parser.parse_args()
 
 
 def main() -> int:
@@ -141,7 +145,7 @@ def main() -> int:
     output_path = Path(__file__).with_name(
         f"microlens_caustic.{arguments.typefileplot}"
     )
-    run_example(output_path)
+    run_example(output_path, typeplotback=arguments.typeplotback)
     return 0
 
 
