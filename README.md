@@ -6,7 +6,7 @@ I use Chalcedon to follow light through a specified lens configuration. Give it 
 ## Scope
 The calculations range from analytic deflection profiles to strong-lens image rendering. I keep them here so the modeling and inference packages can use the same lens physics.
 
-Chalcedon is the single upstream home for the gravitational-lensing engines shared across this ecosystem's maintained repositories (PCAT, Ephesos, and Pergamon). It owns:
+Chalcedon provides the gravitational-lensing engines used by PCAT, Ephesos, and Pergamon:
 - Singular isothermal ellipsoid (`retr_deflsie`) and Plummer-softened point-mass (`retr_deflplum`) deflections, truncated- and untruncated-NFW subhalo deflections (`retr_deflsubh`), external shear (`retr_deflextr`), and a combined host+subhalo+shear evaluator (`retr_defl`).
 - Convergence, inverse magnification, and power-spectrum estimators from a deflection field (`retr_convfromdefl`, `retr_invmfromdefl`, `retr_psecconv`), plus critical curves and caustics (`retr_magn`, `retr_caustics`).
 - Truncated-halo mass kernels (`retr_mcutfrommscl`, `retr_mcut`).
