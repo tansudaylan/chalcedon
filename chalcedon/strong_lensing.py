@@ -258,6 +258,8 @@ class LensCosmo:
 
         if not 0 < z_lens < z_source:
             raise ValueError('Require 0 < lens redshift < source redshift')
+        self.z_lens = z_lens
+        self.z_source = z_source
         self.dd = cosmo.angular_diameter_distance(z_lens).to_value(u.Mpc)
         self.ds = cosmo.angular_diameter_distance(z_source).to_value(u.Mpc)
         self.dds = cosmo.angular_diameter_distance_z1z2(z_lens, z_source).to_value(u.Mpc)

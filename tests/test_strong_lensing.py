@@ -57,6 +57,8 @@ def test_native_cosmology_roundtrips_velocity_dispersion():
     from astropy.cosmology import Planck18
 
     cosmology = LensCosmo(0.5, 1.5, Planck18)
+    assert cosmology.z_lens == 0.5
+    assert cosmology.z_source == 1.5
     angle = cosmology.sis_sigma_v2theta_E(220.0)  # [arcsec]
 
     assert angle > 0
