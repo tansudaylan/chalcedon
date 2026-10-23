@@ -43,7 +43,7 @@ The analytic example uses white backgrounds with black axes. Add
 `--typeplotback dark` for black backgrounds with white axes, or pass
 `typeplotback='dark'` to its `run_example()` function from Python.
 
-![Chalcedon analytic deflection and magnification maps](examples/microlens_caustic.png)
+![Chalcedon analytic deflection and magnification maps](examples/visuals/microlens_caustic.png)
 
 The left panel exposes the intermediate deflection amplitude returned by `chalcedon.retr_caustics()`. The right panel shows the resulting magnification map and its contour candidates. Host and subhalo positions are marked explicitly. This is a deterministic lens-model prediction under the parameters encoded in the example, not an observed image.
 
@@ -56,13 +56,17 @@ python examples/plot_truncation_mass.py --typefileplot png
 python examples/plot_truncation_mass.py --typefileplot png --bokeh
 ```
 
+The [`truncation_mass.ipynb` notebook](examples/truncation_mass.ipynb) calls the
+same plotting function and shows the dimensionless mass ratios at selected
+cutoff radii.
+
 Add `--typeplotback dark` for black backgrounds with white axes in both the
 static and HTML figures. The Python entry points also accept
 `typeplotback='dark'` and inherit a surrounding TDpy theme when it is omitted.
 
-![Dimensionless truncation mass across cutoff radius](examples/truncation_mass.png)
+![Dimensionless truncation mass across cutoff radius](examples/visuals/truncation_mass.png)
 
-Install `python -m pip install -e '.[bokeh]'` to create the interactive companion at `examples/truncation_mass.html`.
+Install `python -m pip install -e '.[bokeh]'` to create the interactive companion at `examples/visuals/truncation_mass.html`.
 
 `retr_mcutfrommscl(radius_ratio)` accepts scalars or NumPy arrays and returns the dimensionless mass ratio. At equal cutoff and scale radii, the ratio is $\pi/4 - 1/2$. The mass increases monotonically with cutoff radius for the assumed truncated profile. Use `retr_mcut` to calculate the corresponding halo mass from the profile normalization, angular radii, lens distance, and critical surface density. These are analytic model predictions, not measured halo masses.
 

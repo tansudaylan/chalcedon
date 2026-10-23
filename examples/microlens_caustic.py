@@ -142,9 +142,8 @@ def parse_arguments():
 
 def main() -> int:
     arguments = parse_arguments()
-    output_path = Path(__file__).with_name(
-        f"microlens_caustic.{arguments.typefileplot}"
-    )
+    visuals_directory = Path(__file__).parent / "visuals"
+    output_path = visuals_directory / f"microlens_caustic.{arguments.typefileplot}"
     run_example(output_path, typeplotback=arguments.typeplotback)
     return 0
 

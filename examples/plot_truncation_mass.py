@@ -91,10 +91,12 @@ def main() -> None:
         help="also write an interactive HTML version",
     )
     arguments = parser.parse_args()
-    output_path = Path(__file__).with_name(f"truncation_mass.{arguments.typefileplot}")
+    visuals_directory = Path(__file__).parent / "visuals"
+    visuals_directory.mkdir(parents=True, exist_ok=True)
+    output_path = visuals_directory / f"truncation_mass.{arguments.typefileplot}"
     run_example(output_path, typeplotback=arguments.typeplotback)
     if arguments.bokeh:
-        run_bokeh_example(Path(__file__).with_name("truncation_mass.html"), typeplotback=arguments.typeplotback)
+        run_bokeh_example(visuals_directory / "truncation_mass.html", typeplotback=arguments.typeplotback)
 
 
 if __name__ == "__main__":
