@@ -120,6 +120,74 @@ def test_native_truncated_nfw_uses_existing_chalcedon_kernel():
     np.testing.assert_allclose(actual[1], 0.0)
 
 
+@pytest.mark.parametrize(
+    ('profile', 'parameters', 'expected_x', 'expected_y'),
+    [
+        ('TNFWC', {'Rs': 1.1, 'alpha_Rs': 0.15, 'r_core': 0.08, 'r_trunc': 3.4,
+                   'center_x': 0.1, 'center_y': -0.2},
+         [0.05247255718934373, 0.1434306605183715, -0.08506484567580612],
+         [0.10494511437868748, 0.017928832564796437, 0.11909078394612856]),
+        ('PSEUDO_DPL', {'Rs': 1.2, 'alpha_Rs': 0.2, 'gamma_inner': 1.2,
+                        'gamma_outer': 4.0, 'center_x': 0.1, 'center_y': -0.2},
+         [0.08246705230082416, 0.2038559567188657, -0.11961929122517725],
+         [0.16493410460164834, 0.025481994589858212, 0.16746700771524814]),
+        ('CNFW', {'Rs': 1.2, 'alpha_Rs': 0.2, 'r_core': 0.15,
+              'center_x': 0.1, 'center_y': -0.2},
+         [0.06225423964166948, 0.17886723838705904, -0.10698952352879361],
+         [0.12450847928333897, 0.02235840479838238, 0.14978533294031104]),
+        ('ULDM', {'kappa_0': 0.3, 'theta_c': 0.2, 'slope': 8,
+              'center_x': 0.1, 'center_y': -0.2},
+         [0.018595758106226823, 0.025034714115894592, -0.013759228273277592],
+         [0.03719151621245365, 0.003129339264486824, 0.019262919582588627]),
+        ('GAUSSIAN', {'amp': 0.5, 'sigma': 0.3, 'center_x': 0.1, 'center_y': -0.2},
+         [0.10676225185107714, 0.19058989428121903, -0.1057746382372381],
+         [0.2135245037021543, 0.02382373678515238, 0.14808449353213332]),
+    ],
+)
+def test_native_pyhalo_mass_profiles_match_reference_deflections(
+    profile, parameters, expected_x, expected_y
+):
+    image_x = np.array([0.3, 0.9, -0.4])
+    image_y = np.array([0.2, -0.1, 0.5])
+
+    alpha_x, alpha_y = LensModel([profile]).alpha(image_x, image_y, [parameters])
+
+    np.testing.assert_allclose(alpha_x, expected_x, rtol=2e-6, atol=1e-10)
+    np.testing.assert_allclose(alpha_y, expected_y, rtol=2e-6, atol=1e-10)
+
+
+@pytest.mark.parametrize(
+    ('profile', 'parameters'),
+    [
+        ('TNFWC', {'Rs': 1.0, 'alpha_Rs': 0.2, 'r_core': 0.1, 'r_trunc': 3.0}),
+        ('PSEUDO_DPL', {'Rs': 1.0, 'alpha_Rs': 0.2, 'gamma_inner': 1.2,
+                        'gamma_outer': 4.0}),
+    ],
+)
+def test_native_radial_profile_normalization_is_alpha_at_scale_radius(profile, parameters):
+    alpha_x, alpha_y = LensModel([profile]).alpha(
+        parameters['Rs'], 0.0, [parameters]
+    )
+
+    assert np.hypot(alpha_x, alpha_y) == pytest.approx(parameters['alpha_Rs'])
+
+
+@pytest.mark.parametrize(
+    ('profile', 'parameters'),
+    [
+        ('TNFWC', {'Rs': 1.0, 'alpha_Rs': 0.2, 'r_core': 0.0, 'r_trunc': 3.0}),
+        ('PSEUDO_DPL', {'Rs': 1.0, 'alpha_Rs': 0.2, 'gamma_inner': 3.0,
+                        'gamma_outer': 4.0}),
+        ('CNFW', {'Rs': 1.0, 'alpha_Rs': 0.2, 'r_core': 0.0}),
+        ('ULDM', {'kappa_0': 0.3, 'theta_c': 0.0, 'slope': 8}),
+        ('GAUSSIAN', {'amp': 0.5, 'sigma': 0.0}),
+    ],
+)
+def test_native_pyhalo_profiles_reject_invalid_parameters(profile, parameters):
+    with pytest.raises(ValueError):
+        LensModel([profile]).alpha([0.5], [0.0], [parameters])
+
+
 def test_native_hernquist_ellipse_preserves_serialized_radius_normalization():
     x = np.array([0.2, 0.4, 0.8, 1.2])  # [arcsec]
     y = np.array([0.1, -0.2, 0.3, 0.8])  # [arcsec]

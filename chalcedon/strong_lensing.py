@@ -1,7 +1,7 @@
 """Composable strong-lensing models with angular coordinates in arcseconds."""
 
 import numpy as np
-from scipy.special import hyp2f1
+from scipy.special import beta, hyp2f1
 from functools import lru_cache
 
 
@@ -86,13 +86,148 @@ def _power_law_deflection(x, y, parameters):
             sine * deflection.real + cosine * deflection.imag)
 
 
+def _pseudo_dpl_projected_density(radius, gamma_inner, gamma_outer):
+    return (0.5 * beta((gamma_outer - 1.0) / 2.0, 0.5)
+            * hyp2f1((gamma_outer - 1.0) / 2.0, gamma_inner / 2.0,
+                     gamma_outer / 2.0, 1.0 / (1.0 + radius**2))
+            * (1.0 + radius**2)**((1.0 - gamma_outer) / 2.0))
+
+
+@lru_cache(maxsize=1)
+def _unit_interval_quadrature():
+    nodes, weights = np.polynomial.legendre.leggauss(96)
+    return 0.5 * (nodes + 1.0), 0.5 * weights
+
+
+def _pseudo_dpl_enclosed_function(radius, gamma_inner, gamma_outer):
+    radius = np.asarray(radius, dtype=float)
+    if not 0.0 < gamma_inner < 3.0 or gamma_outer <= 1.0:
+        raise ValueError('PSEUDO_DPL requires 0 < gamma_inner < 3 and gamma_outer > 1')
+    if gamma_outer > 3.001:
+        scaled = 1.0 + radius**2
+        hypergeometric = hyp2f1((gamma_outer - 3.0) / 2.0, gamma_inner / 2.0,
+                                gamma_outer / 2.0, 1.0 / scaled)
+        return 0.5 * (beta((gamma_outer - 3.0) / 2.0, (3.0 - gamma_inner) / 2.0)
+                      - beta((gamma_outer - 3.0) / 2.0, 1.5)
+                      * hypergeometric * scaled**((3.0 - gamma_outer) / 2.0))
+
+    nodes, weights = _unit_interval_quadrature()
+    safe_radius = np.where(radius > 0.0, radius, 1.0)
+    power = 2.0 / (3.0 - gamma_inner)
+    sample = safe_radius[..., None] * nodes**power
+    integral = power * np.sum(
+        weights * _pseudo_dpl_projected_density(sample, gamma_inner, gamma_outer)
+        * nodes**(2.0 * power - 1.0),
+        axis=-1,
+    )
+    result = safe_radius**2 * integral
+    return np.where(radius > 0.0, result, 0.0)
+
+
+def _tnfwc_u1(radius, core_ratio, truncation_ratio):
+    truncation_squared = truncation_ratio**2 + radius**2
+    core_squared = core_ratio**2 + radius**2
+    difference = core_ratio**2 - truncation_ratio**2
+    argument = np.sqrt(truncation_squared / core_squared)
+    if truncation_ratio > core_ratio:
+        numerator = np.arccosh(argument)
+        difference *= -1.0
+    else:
+        numerator = np.arccos(np.clip(argument, -1.0, 1.0))
+    return numerator / np.sqrt(truncation_squared * difference)
+
+
+def _tnfwc_enclosed_function(radius, core_ratio, truncation_ratio):
+    if core_ratio <= 0.0 or truncation_ratio <= 0.0:
+        raise ValueError('TNFWC requires positive core and truncation radii')
+    if np.isclose(truncation_ratio, 1.0) or np.isclose(truncation_ratio, core_ratio):
+        raise ValueError('TNFWC scale, core, and truncation radii must avoid degenerate ratios')
+    prefactor = truncation_ratio**2 / (truncation_ratio**2 - 1.0)
+
+    def u2(value, scale):
+        return (scale**2 + value**2) * _tnfwc_u1(value, core_ratio, scale)
+
+    return prefactor * (
+        -u2(radius, truncation_ratio) + u2(0.0, truncation_ratio)
+        + u2(radius, 1.0) - u2(0.0, 1.0)
+    )
+
+
+def _radial_deflection(radius, offset_x, offset_y, alpha_at_scale, scale_radius, enclosed):
+    scaled_radius = radius / scale_radius
+    scale_enclosed = enclosed(1.0)
+    radial_ratio = np.divide(enclosed(scaled_radius), scaled_radius**2,
+                             out=np.zeros_like(scaled_radius), where=scaled_radius > 0.0)
+    coefficient = alpha_at_scale / (scale_radius * scale_enclosed) * radial_ratio
+    return coefficient * offset_x, coefficient * offset_y
+
+
+def _nfw_function(radius):
+    radius = np.asarray(radius, dtype=float)
+    output = np.ones_like(radius)
+    below = radius < 1.0
+    above = radius > 1.0
+    below_argument = np.sqrt(np.maximum(1.0 - radius[below]**2, 0.0))
+    above_argument = np.sqrt(np.maximum(radius[above]**2 - 1.0, 0.0))
+    output[below] = np.arctanh(below_argument) / below_argument
+    output[above] = np.arctan(above_argument) / above_argument
+    return output
+
+
+def _cnfw_enclosed_function(radius, core_ratio):
+    radius = np.asarray(radius, dtype=float)
+    if core_ratio <= 0.0:
+        raise ValueError('CNFW requires r_core > 0')
+    if np.isclose(core_ratio, 1.0):
+        core_ratio += 1e-6
+    if np.isclose(core_ratio, 1.0):
+        core_ratio += 1e-6
+    radius_squared = radius**2
+    core_squared = core_ratio**2
+    denominator = (1.0 - core_ratio)**2
+    close = np.abs(radius - core_ratio) <= 1e-6
+    result = np.empty_like(radius)
+    result[close] = 0.5 * (
+        2.0 * (1.0 - 2.0 * core_ratio + core_ratio**3) * _nfw_function(core_ratio)
+        + denominator * (-1.38692 + np.log(core_squared))
+        - core_squared * np.log(core_squared)
+    ) / denominator
+    other = ~close
+    result[other] = 0.5 * (
+        denominator * np.log(0.25 * radius_squared[other])
+        - core_squared * np.log(core_squared)
+        + 2.0 * (core_squared - radius_squared[other])
+        * _nfw_function(radius[other] / core_ratio)
+        + 2.0 * (1.0 + core_ratio * (radius_squared[other] - 2.0))
+        * _nfw_function(radius[other])
+    ) / denominator
+    return result
+
+
+def _uldm_radial_deflection(radius, kappa_0, theta_c, slope):
+    if not np.isfinite(theta_c) or theta_c <= 0.0 or not np.isfinite(slope) or slope <= 1.5:
+        raise ValueError('ULDM requires theta_c > 0 and slope > 1.5')
+    if not np.isfinite(kappa_0):
+        raise ValueError('ULDM requires finite kappa_0')
+    factor = 0.5**(-1.0 / slope) - 1.0
+    radial_squared = radius**2
+    exponent = slope - 1.5
+    drop = -np.expm1(-exponent * np.log1p(factor * radial_squared / theta_c**2))
+    coefficient = np.divide(2.0 * kappa_0 * theta_c**2 * drop,
+                            (2.0 * slope - 3.0) * factor * radial_squared,
+                            out=np.full_like(radial_squared, kappa_0),
+                            where=radial_squared > 0.0)
+    return coefficient
+
+
 class LensModel:
     """Evaluate a sum of explicitly supported lens-plane mass profiles."""
 
     def __init__(self, lens_model_list, *, use_jax=None, multi_plane=False,
                  z_lens=None, z_source=None, lens_redshift_list=None, cosmo=None):
         self.lens_model_list = list(lens_model_list)
-        supported = {'SIS', 'SIE', 'EPL', 'SHEAR', 'SHEAR_GAMMA_PSI', 'CONVERGENCE', 'POINT_MASS', 'TNFW',
+        supported = {'SIS', 'SIE', 'EPL', 'SHEAR', 'SHEAR_GAMMA_PSI', 'CONVERGENCE', 'POINT_MASS',
+                     'TNFW', 'TNFWC', 'CNFW', 'PSEUDO_DPL', 'ULDM', 'GAUSSIAN',
                  'NFW', 'NFW_ELLIPSE_CSE', 'HERNQUIST', 'HERNQUIST_ELLIPSE_CSE'}
         unsupported = set(self.lens_model_list) - supported
         if unsupported:
@@ -146,6 +281,63 @@ class LensModel:
                 radial = retr_deflcutf(safe_radius, amplitude, parameters['Rs'], parameters['r_trunc'])
                 alpha_x += radial * offset_x / safe_radius
                 alpha_y += radial * offset_y / safe_radius
+            elif model == 'TNFWC':
+                scale_radius = parameters['Rs']
+                if scale_radius <= 0.0:
+                    raise ValueError('TNFWC requires Rs > 0')
+                profile_x, profile_y = _radial_deflection(
+                    radius, offset_x, offset_y, parameters['alpha_Rs'], scale_radius,
+                    lambda scaled: _tnfwc_enclosed_function(
+                        scaled, parameters['r_core'] / scale_radius,
+                        parameters['r_trunc'] / scale_radius,
+                    ),
+                )
+                alpha_x += profile_x
+                alpha_y += profile_y
+            elif model == 'CNFW':
+                scale_radius = parameters['Rs']
+                if scale_radius <= 0.0:
+                    raise ValueError('CNFW requires Rs > 0')
+                profile_x, profile_y = _radial_deflection(
+                    radius, offset_x, offset_y, parameters['alpha_Rs'], scale_radius,
+                    lambda scaled: _cnfw_enclosed_function(
+                        scaled, parameters['r_core'] / scale_radius,
+                    ),
+                )
+                alpha_x += profile_x
+                alpha_y += profile_y
+            elif model == 'PSEUDO_DPL':
+                scale_radius = parameters['Rs']
+                if scale_radius <= 0.0:
+                    raise ValueError('PSEUDO_DPL requires Rs > 0')
+                profile_x, profile_y = _radial_deflection(
+                    radius, offset_x, offset_y, parameters['alpha_Rs'], scale_radius,
+                    lambda scaled: _pseudo_dpl_enclosed_function(
+                        scaled, parameters['gamma_inner'], parameters['gamma_outer'],
+                    ),
+                )
+                alpha_x += profile_x
+                alpha_y += profile_y
+            elif model == 'ULDM':
+                slope = parameters.get('slope', 8.0)
+                coefficient = _uldm_radial_deflection(
+                    radius, parameters['kappa_0'], parameters['theta_c'], slope,
+                )
+                alpha_x += coefficient * offset_x
+                alpha_y += coefficient * offset_y
+            elif model == 'GAUSSIAN':
+                sigma = parameters['sigma']
+                amplitude = parameters['amp']
+                if not np.isfinite(sigma) or sigma <= 0.0 or not np.isfinite(amplitude):
+                    raise ValueError('GAUSSIAN requires sigma > 0 and finite amp')
+                radius_squared = radius**2
+                enclosed_fraction = -np.expm1(-radius_squared / (2.0 * sigma**2))
+                coefficient = np.divide(amplitude * enclosed_fraction,
+                                         np.pi * radius_squared,
+                                         out=np.full_like(radius_squared, amplitude / (2.0 * np.pi * sigma**2)),
+                                         where=radius_squared > 0.0)
+                alpha_x += coefficient * offset_x
+                alpha_y += coefficient * offset_y
             elif model == 'POINT_MASS':
                 scale = np.divide(parameters['theta_E']**2, radius**2,
                                   out=np.zeros_like(radius), where=radius > 0)
