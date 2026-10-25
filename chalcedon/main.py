@@ -120,6 +120,7 @@ def evaluate_self_lensing_model(
     """Integrate point-lens magnification over a limb-darkened stellar disk and return the relative flux."""
 
     from astropy.constants import G, M_sun, R_sun, c
+    from scipy.integrate import quad
     from scipy.ndimage import map_coordinates
     from scipy.signal import fftconvolve
     from tdpy.exoplanet import quadratic_limb_darkened_stellar_grid
@@ -152,8 +153,29 @@ def evaluate_self_lensing_model(
     unocculted_flux = stellar_brightness.sum()
 
     pixel_size = 2.0 / (grid_size - 1)
-    normalized_separation = np.maximum(radial_distance, 0.5 * pixel_size) / einstein_radius_ratio
-    excess_flux_grid = fftconvolve(stellar_brightness, retr_magnpntslens(normalized_separation) - 1.0, mode="full")
+    nodes, weights = np.polynomial.legendre.leggauss(8)
+    pixel_kernel = np.zeros_like(radial_distance)
+    for horizontal_node, horizontal_weight in zip(nodes, weights):
+        for vertical_node, vertical_weight in zip(nodes, weights):
+            separation = np.hypot(
+                image_x + 0.5 * pixel_size * horizontal_node,
+                image_y + 0.5 * pixel_size * vertical_node,
+            ) / einstein_radius_ratio
+            root = np.sqrt(separation**2 + 4.0)
+            excess = 4.0 / (separation * root * (separation**2 + 2.0 + separation * root))
+            pixel_kernel += horizontal_weight * vertical_weight * excess / 4.0
+
+    def enclosed_excess(angle):
+        radius = 0.5 * pixel_size / np.cos(angle)
+        return 2.0 * einstein_radius_ratio**2 * radius / (
+            np.sqrt(radius**2 + 4.0 * einstein_radius_ratio**2) + radius
+        )
+
+    center = (grid_size - 1) // 2
+    pixel_kernel[center, center] = 8.0 * quad(
+        enclosed_excess, 0.0, np.pi / 4.0, epsabs=0.0, epsrel=1e-11,
+    )[0] / pixel_size**2
+    excess_flux_grid = fftconvolve(stellar_brightness, pixel_kernel, mode="full")
 
     orbital_phase = 2.0 * np.pi * time_days / period_days
     lens_x = semimajor_axis_source_radii * np.sin(orbital_phase)

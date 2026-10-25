@@ -139,6 +139,24 @@ def test_self_lensing_model_brightens_symmetrically_near_foreground_conjunction(
     assert np.max(relative_flux) > 1.0005
 
 
+@pytest.mark.parametrize("lens_mass_solar", [9.55e-4, 0.6, 1.4, 8.0])
+@pytest.mark.parametrize("grid_size", [101, 301])
+def test_self_lensing_matches_exact_centered_uniform_disk(lens_mass_solar, grid_size):
+    from astropy.constants import G, M_sun, R_sun, c
+
+    separation = (G * (1.0 + lens_mass_solar) * M_sun * (30.0 * 86400.0)**2
+                  / (4.0 * np.pi**2))**(1.0 / 3.0)
+    radius_squared = (4.0 * G * lens_mass_solar * M_sun * separation / c**2 / R_sun**2).decompose().value
+    exact_excess = np.expm1(0.5 * np.log1p(4.0 * radius_squared))
+    flux = chalcedon.evaluate_self_lensing_model(
+        np.array([-0.1, 0.0, 0.1]), period_days=30.0,
+        source_radius_solar=1.0, source_mass_solar=1.0,
+        lens_mass_solar=lens_mass_solar, limb_darkening_coefficients=(0.0, 0.0),
+        grid_size=grid_size,
+    )
+    assert flux[1] - 1.0 == pytest.approx(exact_excess, rel=0.002)
+
+
 def test_self_lensing_is_zero_at_far_side_conjunction():
     period_days = 30.0  # [day]
     time_days = np.linspace(0.0, period_days, 201)  # [day]
