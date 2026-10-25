@@ -1,5 +1,7 @@
 # Chalcedon
 
+The name comes from [ancient Chalcedon](https://en.wikipedia.org/wiki/Chalcedon), in present-day Kadikoy, Istanbul. Here, Chalcedon names the lens-physics layer that turns a mass distribution into deflections and lensed images.
+
 ## Purpose
 I use Chalcedon to follow light through a specified lens configuration. Give it a host lens, a source, subhalos, and external shear, and calculate the resulting deflections, magnifications, critical curves, and caustics. The arcs look better when I can also inspect the lens equation that produced them.
 
@@ -17,9 +19,40 @@ Chalcedon provides the gravitational-lensing engines used by PCAT, Ephesos, and 
 
 `chalcedon.strong_lensing` provides composable `LensModel`, `LensEquationSolver`, `LensCosmo`, and `LensModelExtensions` interfaces. They calculate deflections, source-plane coordinates, numerical Jacobians, convergence, magnification, image positions, critical curves, and caustics. Supported mass profiles include SIS, SIE, EPL, point mass, shear, convergence, NFW, truncated NFW, core-truncated NFW, cored NFW, pseudo double-power-law, ULDM soliton, circular Gaussian, and elliptical NFW/Hernquist. Coordinates, Einstein radii, and angular scale radii use arcseconds. Multiple lens planes use distance-weighted ray propagation with Astropy cosmology.
 
-`chalcedon.imaging` supplies flux-normalized Sersic, Gaussian, Hernquist, interpolated-image, and Cartesian-shapelet light models, angular coordinate grids, point sources, and PSF convolution. The `ImageModel` evaluates the lens equation on supersampled coordinates, convolves the fine scene, and sums subpixel count rates into detector pixels. Mejiro can select these calculations with `backend="chalcedon"` without loading Lenstronomy. Mejiro also retains its separate Lenstronomy backend, which remains the default.
+`chalcedon.imaging` supplies flux-normalized Sersic, Gaussian, Hernquist, interpolated-image, and Cartesian-shapelet light models, angular coordinate grids, point sources, and PSF convolution. The `ImageModel` evaluates the lens equation on supersampled coordinates, convolves the fine scene, and sums subpixel count rates into detector pixels. Mejiro defaults to these calculations with `backend="chalcedon"` without loading Lenstronomy and retains a separate Lenstronomy backend for comparisons.
 
-Elliptical halo profiles are integrated from their projected density, including inherited CSE parameter conventions. Their labels do not imply the old CSE approximation is used. Sersic half-light constants use the inverse incomplete gamma function. Finite-difference Jacobians and grid-seeded image solving require convergence checks for a user's accuracy requirements. Unsupported profiles, extinction/special rendering options, and JAX execution raise explicitly. Native NumPy/SciPy calculations do not need a separate lensing engine.
+Elliptical halo profiles are integrated directly from their projected density using inherited CSE parameter conventions. Sersic half-light constants use the inverse incomplete gamma function. Finite-difference Jacobians and grid-seeded image solving need sufficiently fine steps and grids for the desired accuracy. Unsupported profiles, extinction and special rendering options, and JAX execution raise explicit errors. The included lensing engine uses NumPy and SciPy.
+
+## Multiple source planes
+
+I can render extended light components at different source redshifts in one
+image by passing `source_redshift_list` to `ImageModel`, with one redshift per
+source-light profile. The lens must use `multi_plane=True`, an Astropy cosmology,
+and a reference `z_source` behind every lens plane. Its mass-profile parameters
+specify reduced deflections at that reference redshift. Changing a component's
+source redshift changes the distance ratios while keeping the physical lens
+distribution fixed. Lenses at or behind that source contribute zero deflection.
+Profiles at the same redshift can represent separate parts of one galaxy.
+
+`LensModel.ray_shooting(..., z_source=...)` exposes the same calculation for
+individual rays. Deflections, Hessians, convergence, magnification, and
+`LensEquationSolver.image_position_from_source()` accept the same explicit
+`z_source` selection. Omitting it retains the original reference-source
+behavior. The point-source parameter blocks passed to `ImageModel.image()`
+still use the reference source plane.
+
+```bash
+python examples/multiple_source_planes.py --typefileplot png
+python examples/multiple_source_planes.py --typefileplot pdf --typeplotback dark
+```
+
+This explicitly synthetic example places a source at redshift 0.5 between an
+SIS host at redshift 0.3 and a truncated NFW halo at redshift 0.7. A second
+source at redshift 1.5 lies behind both lenses. Both source images and their
+sum share one brightness scale and a Gaussian PSF. Timestamped figures and
+matching compressed numerical arrays go directly into the example's `visuals/`
+directory. With the Bokeh extra installed, each run also writes a self-contained
+interactive view. Existing outputs are preserved.
 
 ## Installation
 
@@ -45,7 +78,30 @@ The analytic example uses white backgrounds with black axes. Add
 
 ![Chalcedon analytic deflection and magnification maps](examples/visuals/microlens_caustic.png)
 
-The left panel exposes the intermediate deflection amplitude returned by `chalcedon.retr_caustics()`. The right panel shows the resulting magnification map and its contour candidates. Host and subhalo positions are marked explicitly. This is a deterministic lens-model prediction under the parameters encoded in the example, not an observed image.
+The left panel shows the deflection amplitude returned by `chalcedon.retr_caustics()`. The right panel shows the resulting magnification map and contour candidates. Host and subhalo positions are marked explicitly. Both panels show deterministic predictions from the example's stated parameters. No observed image data enter the calculation.
+
+## Moving lens and source
+
+The animation uses Chalcedon's native SIS-plus-shear model, image solver, and
+critical-curve calculation. The blue curve is critical in the image plane.
+Its mapping is the pink source-plane caustic. Yellow points show the images,
+the green star is the source, and the cross marks the moving lens. Crossing
+the caustic changes the number of images between two and four.
+
+```bash
+python examples/microlens_caustic.py --animate --frames 48
+python examples/microlens_caustic.py --animate --frames 48 --typeplotback dark
+```
+
+![Native lens and source motion with critical curves, caustics, and image positions](examples/visuals/moving_lens_20261025_142326.gif)
+
+The Einstein angle is 0.9 arcsec and the external shear components are 0.18
+and 0.04. The two objects follow prescribed angular tracks rather than a
+dynamical orbit. Each frame solves the lens equation anew. Both viewports stay
+fixed, and the legend remains outside the data panels. New GIFs and their
+numeric JSON sidecars receive timestamps and preserve earlier outputs.
+The sidecar records positions, phases, lens-equation residuals, model settings,
+and the source-code hash. `--animation-output` selects an explicit new path.
 
 ## Truncated-halo mass
 
@@ -68,7 +124,7 @@ static and HTML figures. The Python entry points also accept
 
 Install `python -m pip install -e '.[bokeh]'` to create the interactive companion at `examples/visuals/truncation_mass.html`.
 
-`retr_mcutfrommscl(radius_ratio)` accepts scalars or NumPy arrays and returns the dimensionless mass ratio. At equal cutoff and scale radii, the ratio is $\pi/4 - 1/2$. The mass increases monotonically with cutoff radius for the assumed truncated profile. Use `retr_mcut` to calculate the corresponding halo mass from the profile normalization, angular radii, lens distance, and critical surface density. These are analytic model predictions, not measured halo masses.
+`retr_mcutfrommscl(radius_ratio)` accepts scalars or NumPy arrays and returns the dimensionless mass ratio. At equal cutoff and scale radii, the ratio is $\pi/4 - 1/2$. The mass increases monotonically with cutoff radius for the assumed truncated profile. Use `retr_mcut` to calculate the corresponding halo mass from the profile normalization, angular radii, lens distance, and critical surface density. The returned masses follow the assumed analytic profile, with no halo-mass measurements used.
 
 ## Inspecting the result
 Look at the deflections and magnification alongside the rendered image. A convincing-looking arc is more useful when I can trace it back to the supplied mass and light profiles and check the numerical resolution.

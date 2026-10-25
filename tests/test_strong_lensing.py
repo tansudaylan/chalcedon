@@ -97,15 +97,136 @@ def test_native_two_plane_mass_sheets_follow_distance_weighted_ray_propagation()
     model = LensModel(['CONVERGENCE', 'CONVERGENCE'], lens_redshift_list=[0.3, 0.6],
                       z_source=1.5, cosmo=Planck18, multi_plane=True)
     parameters = [{'kappa': 0.1}, {'kappa': 0.2}]
-    propagation = (Planck18.angular_diameter_distance_z1z2(0.3, 0.6).value
-                   * Planck18.angular_diameter_distance(1.5).value
-                   / (Planck18.angular_diameter_distance(0.6).value
-                      * Planck18.angular_diameter_distance_z1z2(0.3, 1.5).value))
+    first_distance, second_distance, source_distance = (
+        Planck18.comoving_distance(redshift).value for redshift in (0.3, 0.6, 1.5)
+    )  # [Mpc]
+    propagation = ((second_distance-first_distance) * source_distance
+                   / (second_distance * (source_distance-first_distance)))
     factor = 1.0 - 0.1 - 0.2 * (1.0 - propagation * 0.1)
 
     source = model.ray_shooting([1.0], [2.0], parameters)
 
     np.testing.assert_allclose(source, [[factor], [2.0 * factor]])
+
+
+@pytest.mark.parametrize('source_redshift', [0.2, 0.5, 0.6, 1.0, 2.0, 3.0])
+def test_source_planes_share_reference_mass_normalization_and_causal_lens_order(source_redshift):
+    from astropy.cosmology import Planck18
+
+    lens_redshifts = [0.3, 0.6]
+    reference_redshift = 2.0
+    convergence = [0.1, 0.2]
+    model = LensModel(['CONVERGENCE', 'CONVERGENCE'], multi_plane=True,
+                      lens_redshift_list=lens_redshifts, z_source=reference_redshift, cosmo=Planck18)
+    parameters = [{'kappa': value} for value in convergence]
+    physical_strengths = [
+        value * Planck18.angular_diameter_distance(reference_redshift).value
+        / ((Planck18.comoving_distance(reference_redshift) - Planck18.comoving_distance(redshift)).value
+           / (1.0 + reference_redshift))
+        for redshift, value in zip(lens_redshifts, convergence)
+    ]
+    second_plane_position = (
+        1.0 - physical_strengths[0]
+        * ((Planck18.comoving_distance(0.6) - Planck18.comoving_distance(0.3)).value / 1.6)
+        / Planck18.angular_diameter_distance(0.6).value
+    )
+    expected_factor = 1.0
+    for redshift, strength, position in zip(lens_redshifts, physical_strengths, [1.0, second_plane_position]):
+        if redshift < source_redshift:
+            expected_factor -= (
+                     strength * position
+                     * ((Planck18.comoving_distance(source_redshift) - Planck18.comoving_distance(redshift)).value
+                         / (1.0 + source_redshift))
+                / Planck18.angular_diameter_distance(source_redshift).value
+            )
+    actual = model.ray_shooting([1.0], [2.0], parameters, z_source=source_redshift)
+    np.testing.assert_allclose(actual, [[expected_factor], [2.0 * expected_factor]], rtol=1e-14)
+    if source_redshift == reference_redshift:
+        np.testing.assert_array_equal(actual, model.ray_shooting([1.0], [2.0], parameters))
+
+
+@pytest.mark.parametrize('source_redshift', [0.0, -0.5, np.nan, np.inf])
+def test_source_plane_rejects_invalid_redshifts(source_redshift):
+    from astropy.cosmology import Planck18
+
+    model = LensModel(['CONVERGENCE'], multi_plane=True,
+                      lens_redshift_list=[0.3], z_source=2.0, cosmo=Planck18)
+    with pytest.raises(ValueError, match='finite and positive'):
+        model.ray_shooting([1.0], [2.0], [{'kappa': 0.1}], z_source=source_redshift)
+
+
+def test_source_redshift_requires_explicit_reference_geometry():
+    with pytest.raises(ValueError, match='reference z_source'):
+        LensModel(['SIS']).ray_shooting([1.0], [2.0], [{'theta_E': 1.0}], z_source=1.0)
+
+
+@pytest.mark.parametrize('source_redshift', [0.5, 1.5, 4.0])
+@pytest.mark.parametrize('curved', [False, True])
+def test_source_mapping_is_invariant_under_reference_redshift_conversion(source_redshift, curved):
+    from astropy.cosmology import LambdaCDM, Planck18
+    from chalcedon.strong_lensing import _distance_between
+
+    cosmology = LambdaCDM(H0=70, Om0=0.3, Ode0=0.6) if curved else Planck18
+    redshifts = [0.3, 0.7]
+    parameters = [{'theta_E': 0.8}, {'theta_E': 0.1, 'center_x': 0.4, 'center_y': -0.1}]
+    reference = LensModel(['SIS', 'POINT_MASS'], multi_plane=True,
+                          lens_redshift_list=redshifts, z_source=2.0, cosmo=cosmology)
+    converted = LensModel(['SIS', 'POINT_MASS'], multi_plane=True,
+                          lens_redshift_list=redshifts, z_source=3.0, cosmo=cosmology)
+    converted_parameters = []
+    for index, (redshift, profile) in enumerate(zip(redshifts, parameters)):
+        ratio = (
+            _distance_between(cosmology, redshift, 3.0).value
+            / cosmology.angular_diameter_distance(3.0).value
+            / (_distance_between(cosmology, redshift, 2.0).value
+               / cosmology.angular_diameter_distance(2.0).value)
+        )
+        converted_parameters.append(dict(profile, theta_E=profile['theta_E'] * ratio**(1.0 if index == 0 else 0.5)))
+    image_x = np.array([-0.8, 0.2, 0.7, 1.1])  # [arcsec]
+    image_y = np.array([0.3, -0.6, 0.9, -0.2])  # [arcsec]
+    expected = reference.ray_shooting(image_x, image_y, parameters, z_source=source_redshift)
+    actual = converted.ray_shooting(image_x, image_y, converted_parameters, z_source=source_redshift)
+    np.testing.assert_allclose(actual, expected, rtol=1e-13, atol=1e-14)
+
+
+def test_angular_distance_helper_supports_older_cosmology_signature():
+    from chalcedon.strong_lensing import _distance_between
+
+    class LegacyCosmology:
+        def angular_diameter_distance(self, redshift):
+            return redshift
+
+        def angular_diameter_distance_z1z2(self, first, second):
+            return second - first
+
+    assert _distance_between(LegacyCosmology(), 0.3, 1.0) == pytest.approx(0.7)
+
+
+@pytest.mark.parametrize('source_redshift', [0.2, 0.6, 1.5, 2.0, 3.0])
+def test_source_plane_sis_positions_and_magnification_match_analytic_solution(source_redshift):
+    from astropy.cosmology import Planck18
+    from chalcedon.strong_lensing import _distance_between
+
+    lens = LensModel(['SIS'], multi_plane=True, lens_redshift_list=[0.3], z_source=2.0, cosmo=Planck18)
+    parameters = [{'theta_E': 0.8}]
+    position_x, position_y = LensEquationSolver(lens).image_position_from_source(
+        0.05, 0.0, parameters, search_window=4.0, z_source=source_redshift,
+    )
+    if source_redshift < 0.3:
+        np.testing.assert_allclose(position_x, [0.05], atol=1e-7)
+        np.testing.assert_allclose(lens.magnification(position_x, position_y, parameters,
+                                                    z_source=source_redshift), [1.0], atol=1e-10)
+    else:
+        einstein_radius = (
+            0.8 * _distance_between(Planck18, 0.3, source_redshift).value
+            / Planck18.angular_diameter_distance(source_redshift).value
+            / (_distance_between(Planck18, 0.3, 2.0).value / Planck18.angular_diameter_distance(2.0).value)
+        )  # [arcsec]
+        np.testing.assert_allclose(np.sort(position_x), [0.05-einstein_radius, 0.05+einstein_radius], atol=1e-7)
+        expected = 1.0 / (1.0-einstein_radius/np.abs(position_x))
+        np.testing.assert_allclose(lens.magnification(position_x, position_y, parameters,
+                                                    z_source=source_redshift), expected, rtol=1e-6)
+    np.testing.assert_allclose(position_y, 0.0, atol=1e-7)
 
 
 def test_native_truncated_nfw_uses_existing_chalcedon_kernel():

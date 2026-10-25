@@ -218,7 +218,8 @@ class ImageModel:
     """Ray-shoot extended light and integrate count rates over detector pixels."""
 
     def __init__(self, data_class, psf_class, lens_model_class, source_model_class,
-                 lens_light_model_class, point_source_class=None, kwargs_numerics=None):
+                 lens_light_model_class, point_source_class=None, kwargs_numerics=None,
+                 *, source_redshift_list=None):
         self.grid = data_class
         self.psf = psf_class
         self.lens = lens_model_class
@@ -226,8 +227,17 @@ class ImageModel:
         self.lens_light = lens_light_model_class
         self.point_source = point_source_class
         self.numerics = kwargs_numerics or {}
+        self.source_redshifts = None if source_redshift_list is None else list(source_redshift_list)
+        if self.source_redshifts is not None:
+            if len(self.source_redshifts) != len(self.source.light_model_list):
+                raise ValueError('Provide one source redshift per light profile')
+            if not self.lens.multi_plane:
+                raise ValueError('Source redshifts require a multi-plane lens with reference geometry')
+            if any(not np.isfinite(redshift) or redshift <= 0.0 for redshift in self.source_redshifts):
+                raise ValueError('Source redshifts must be finite and positive')
 
-    def _render(self, light_model, parameters, kwargs_lens=None, unconvolved=False):
+    def _render(self, light_model, parameters, kwargs_lens=None, unconvolved=False,
+                *, source_index=None, z_source=None):
         columns, rows = self.grid.num_pixel_axes
         factor = int(self.numerics.get('supersampling_factor', 1))
         if factor < 1:
@@ -236,21 +246,24 @@ class ImageModel:
                                               (np.arange(rows * factor) + 0.5) / factor - 0.5)
         image_x, image_y = self.grid.map_pix2coord(fine_columns.ravel(), fine_rows.ravel())
         singular = np.zeros(image_x.shape, dtype=bool)
+        ray_options = {} if z_source is None else {'z_source': z_source}
         if kwargs_lens is not None:
             angular_x, angular_y = image_x, image_y
-            for mass_profile, lens_parameters in zip(self.lens.lens_model_list, kwargs_lens):
+            for index, (mass_profile, lens_parameters) in enumerate(zip(self.lens.lens_model_list, kwargs_lens)):
+                if z_source is not None and self.lens.lens_redshift_list[index] >= z_source:
+                    continue
                 if mass_profile in {'SIS', 'SIE', 'EPL', 'POINT_MASS'}:
                     singular |= (np.isclose(angular_x, lens_parameters.get('center_x', 0.0), atol=1e-12, rtol=0.0)
                                  & np.isclose(angular_y, lens_parameters.get('center_y', 0.0), atol=1e-12, rtol=0.0))
-            image_x, image_y = self.lens.ray_shooting(image_x, image_y, kwargs_lens)
-        flux = light_model.surface_brightness(image_x, image_y, parameters)
+            image_x, image_y = self.lens.ray_shooting(image_x, image_y, kwargs_lens, **ray_options)
+        flux = light_model.surface_brightness(image_x, image_y, parameters, k=source_index)
         if np.any(singular):
             averaged = np.zeros(np.count_nonzero(singular))
             for offset_x, offset_y in ((-0.25, -0.25), (-0.25, 0.25), (0.25, -0.25), (0.25, 0.25)):
                 offset = self.grid.transform_pix2angle @ np.array([offset_x, offset_y]) / factor
                 source_x, source_y = self.lens.ray_shooting(angular_x[singular] + offset[0],
-                                                          angular_y[singular] + offset[1], kwargs_lens)
-                averaged += light_model.surface_brightness(source_x, source_y, parameters)
+                                                          angular_y[singular] + offset[1], kwargs_lens, **ray_options)
+                averaged += light_model.surface_brightness(source_x, source_y, parameters, k=source_index)
             flux[singular] = averaged / 4.0
         fine_image = (flux * self.grid.pixel_area / factor**2).reshape(rows * factor, columns * factor)
         if self.numerics.get('flux_evaluate_indexes') is not None:
@@ -269,6 +282,13 @@ class ImageModel:
                                   kwargs_special=None, unconvolved=False):
         if kwargs_extinction or kwargs_special:
             raise NotImplementedError('Extinction and special rendering options require explicit native support')
+        if self.source_redshifts is not None:
+            columns, rows = self.grid.num_pixel_axes
+            result = np.zeros((rows, columns))
+            for index, redshift in enumerate(self.source_redshifts):
+                result += self._render(self.source, kwargs_source, kwargs_lens, unconvolved,
+                                       source_index=index, z_source=redshift)
+            return result
         return self._render(self.source, kwargs_source, kwargs_lens, unconvolved)
 
     def image(self, kwargs_lens, kwargs_source, kwargs_lens_light, kwargs_ps=None,

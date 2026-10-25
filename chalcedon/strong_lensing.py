@@ -220,6 +220,13 @@ def _uldm_radial_deflection(radius, kappa_0, theta_c, slope):
     return coefficient
 
 
+def _distance_between(cosmology, first_redshift, second_redshift):
+    try:
+        return cosmology.angular_diameter_distance(first_redshift, second_redshift)
+    except TypeError:
+        return cosmology.angular_diameter_distance_z1z2(first_redshift, second_redshift)
+
+
 class LensModel:
     """Evaluate a sum of explicitly supported lens-plane mass profiles."""
 
@@ -244,9 +251,9 @@ class LensModel:
         if use_jax is True or (isinstance(use_jax, list) and any(use_jax)):
             raise NotImplementedError('Chalcedon uses its native NumPy backend')
 
-    def alpha(self, x, y, kwargs_lens):
-        if self.multi_plane:
-            source_x, source_y = self.ray_shooting(x, y, kwargs_lens)
+    def alpha(self, x, y, kwargs_lens, *, z_source=None):
+        if self.multi_plane or z_source is not None:
+            source_x, source_y = self.ray_shooting(x, y, kwargs_lens, z_source=z_source)
             return np.asarray(x) - source_x, np.asarray(y) - source_y
         if len(kwargs_lens) != len(self.lens_model_list):
             raise ValueError('Provide one parameter dictionary per mass profile')
@@ -357,20 +364,33 @@ class LensModel:
                 alpha_y += parameters['kappa'] * offset_y
         return alpha_x, alpha_y
 
-    def ray_shooting(self, x, y, kwargs_lens):
+    def ray_shooting(self, x, y, kwargs_lens, *, z_source=None):
+        """Map rays to a source while retaining mass normalization at self.z_source.
+
+        In multi-plane mode profile parameters specify reduced deflections at
+        the reference source redshift. An explicit z_source changes distance
+        ratios, keeping physical lens masses fixed and excluding later lenses.
+        """
+        if z_source is not None and not self.multi_plane:
+            raise ValueError('Changing source redshift requires multi_plane and a reference z_source')
         if self.multi_plane:
             if len(kwargs_lens) != len(self.lens_model_list):
                 raise ValueError('Provide one parameter dictionary per mass profile')
+            destination = self.z_source if z_source is None else float(z_source)
+            if not np.isfinite(destination) or destination <= 0.0:
+                raise ValueError('Source redshift must be finite and positive')
             image_x, image_y = np.broadcast_arrays(np.asarray(x, dtype=float), np.asarray(y, dtype=float))
             deflections = []
             redshifts = sorted(set(self.lens_redshift_list))
             source_distance = self.cosmo.angular_diameter_distance(self.z_source).value
             for redshift in redshifts:
+                if redshift >= destination:
+                    continue
                 plane_x, plane_y = image_x.copy(), image_y.copy()
                 plane_distance = self.cosmo.angular_diameter_distance(redshift).value
                 for earlier_redshift, earlier_x, earlier_y in deflections:
-                    between = self.cosmo.angular_diameter_distance_z1z2(earlier_redshift, redshift).value
-                    to_source = self.cosmo.angular_diameter_distance_z1z2(earlier_redshift, self.z_source).value
+                    between = _distance_between(self.cosmo, earlier_redshift, redshift).value
+                    to_source = _distance_between(self.cosmo, earlier_redshift, self.z_source).value
                     propagation = between * source_distance / (plane_distance * to_source)
                     plane_x -= propagation * earlier_x
                     plane_y -= propagation * earlier_y
@@ -378,27 +398,37 @@ class LensModel:
                 plane_model = LensModel([self.lens_model_list[index] for index in selected])
                 plane_alpha = plane_model.alpha(plane_x, plane_y, [kwargs_lens[index] for index in selected])
                 deflections.append((redshift, *plane_alpha))
+            if destination != self.z_source:
+                destination_distance = self.cosmo.angular_diameter_distance(destination).value
+                source_x, source_y = image_x.copy(), image_y.copy()
+                for redshift, alpha_x, alpha_y in deflections:
+                    to_destination = _distance_between(self.cosmo, redshift, destination).value
+                    to_reference = _distance_between(self.cosmo, redshift, self.z_source).value
+                    scale = to_destination * source_distance / (destination_distance * to_reference)
+                    source_x -= scale * alpha_x
+                    source_y -= scale * alpha_y
+                return source_x, source_y
             return (image_x - sum(item[1] for item in deflections),
                     image_y - sum(item[2] for item in deflections))
         alpha_x, alpha_y = self.alpha(x, y, kwargs_lens)
         return np.asarray(x) - alpha_x, np.asarray(y) - alpha_y
 
-    def hessian(self, x, y, kwargs_lens, diff=1e-5):
-        plus_x = self.alpha(np.asarray(x) + diff, y, kwargs_lens)
-        minus_x = self.alpha(np.asarray(x) - diff, y, kwargs_lens)
-        plus_y = self.alpha(x, np.asarray(y) + diff, kwargs_lens)
-        minus_y = self.alpha(x, np.asarray(y) - diff, kwargs_lens)
+    def hessian(self, x, y, kwargs_lens, diff=1e-5, *, z_source=None):
+        plus_x = self.alpha(np.asarray(x) + diff, y, kwargs_lens, z_source=z_source)
+        minus_x = self.alpha(np.asarray(x) - diff, y, kwargs_lens, z_source=z_source)
+        plus_y = self.alpha(x, np.asarray(y) + diff, kwargs_lens, z_source=z_source)
+        minus_y = self.alpha(x, np.asarray(y) - diff, kwargs_lens, z_source=z_source)
         return ((plus_x[0] - minus_x[0]) / (2.0 * diff),
                 (plus_y[0] - minus_y[0]) / (2.0 * diff),
                 (plus_x[1] - minus_x[1]) / (2.0 * diff),
                 (plus_y[1] - minus_y[1]) / (2.0 * diff))
 
-    def kappa(self, x, y, kwargs_lens):
-        hessian_xx, _, _, hessian_yy = self.hessian(x, y, kwargs_lens)
+    def kappa(self, x, y, kwargs_lens, *, z_source=None):
+        hessian_xx, _, _, hessian_yy = self.hessian(x, y, kwargs_lens, z_source=z_source)
         return 0.5 * (hessian_xx + hessian_yy)
 
-    def magnification(self, x, y, kwargs_lens):
-        hessian_xx, hessian_xy, hessian_yx, hessian_yy = self.hessian(x, y, kwargs_lens)
+    def magnification(self, x, y, kwargs_lens, *, z_source=None):
+        hessian_xx, hessian_xy, hessian_yx, hessian_yy = self.hessian(x, y, kwargs_lens, z_source=z_source)
         determinant = (1.0 - hessian_xx) * (1.0 - hessian_yy) - hessian_xy * hessian_yx
         with np.errstate(divide='ignore', invalid='ignore'):
             return 1.0 / determinant
@@ -411,7 +441,7 @@ class LensEquationSolver:
         self.lens_model = lens_model
 
     def image_position_from_source(self, source_x, source_y, kwargs_lens,
-                                   search_window=6.0, min_distance=0.01, solver=None):
+                                   search_window=6.0, min_distance=0.01, solver=None, *, z_source=None):
         from scipy.optimize import root
 
         if search_window <= 0 or min_distance <= 0:
@@ -423,7 +453,7 @@ class LensEquationSolver:
         solutions = []
 
         def equation(position):
-            source = self.lens_model.ray_shooting(position[0], position[1], kwargs_lens)
+            source = self.lens_model.ray_shooting(position[0], position[1], kwargs_lens, z_source=z_source)
             return np.asarray(source) - [source_x, source_y]
 
         for offset_x in grid:
@@ -437,7 +467,8 @@ class LensEquationSolver:
         if not solutions:
             return np.array([]), np.array([])
         positions = np.asarray(solutions)
-        order = np.argsort(-np.abs(self.lens_model.magnification(positions[:, 0], positions[:, 1], kwargs_lens)))
+        order = np.argsort(-np.abs(self.lens_model.magnification(positions[:, 0], positions[:, 1], kwargs_lens,
+                                       z_source=z_source)))
         return positions[order, 0], positions[order, 1]
 
 
@@ -454,7 +485,7 @@ class LensCosmo:
         self.z_source = z_source
         self.dd = cosmo.angular_diameter_distance(z_lens).to_value(u.Mpc)
         self.ds = cosmo.angular_diameter_distance(z_source).to_value(u.Mpc)
-        self.dds = cosmo.angular_diameter_distance_z1z2(z_lens, z_source).to_value(u.Mpc)
+        self.dds = _distance_between(cosmo, z_lens, z_source).to_value(u.Mpc)
         self.sigma_crit = (c**2 / (4.0 * np.pi * G) * (self.ds / (self.dd * self.dds)) / u.Mpc).to_value(u.M_sun / u.Mpc**2)
 
     def sis_sigma_v2theta_E(self, sigma_v):

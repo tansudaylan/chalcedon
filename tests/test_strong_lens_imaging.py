@@ -34,6 +34,106 @@ def test_native_image_ray_shooting_and_pieces_produce_an_einstein_ring():
     assert source_piece[50, 50] < 1e-20
 
 
+def test_multiple_source_planes_render_a_shared_physical_mass_distribution():
+    from astropy.cosmology import Planck18
+
+    geometry = make_grid_with_coordtransform(31, 0.05)
+    grid = PixelGrid(31, 31, geometry[2], geometry[3], geometry[6])
+    reference_redshift = 2.0
+    lens = LensModel(['CONVERGENCE', 'CONVERGENCE'], multi_plane=True,
+                     lens_redshift_list=[0.3, 0.8], z_source=reference_redshift, cosmo=Planck18)
+    parameters = [{'kappa': 0.1}, {'kappa': 0.2}]
+    sources = [{'amp': 1.0, 'sigma': 0.1, 'center_x': 0.08},
+               {'amp': 0.6, 'sigma': 0.16, 'center_y': -0.1}]
+    source_redshifts = [0.5, 1.5]
+    renderer = ImageModel(grid, PSF(), lens, LightModel(['GAUSSIAN', 'GAUSSIAN']),
+                          LightModel([]), source_redshift_list=source_redshifts)
+    actual = renderer.image(parameters, sources, [])
+    distance = Planck18.comoving_distance
+    reference = distance(reference_redshift).value
+    lens_distances = [distance(redshift).value for redshift in (0.3, 0.8)]
+    physical = [value['kappa'] * reference / (reference - position)
+                for value, position in zip(parameters, lens_distances)]
+    second_position = 1.0 - physical[0] * (lens_distances[1] - lens_distances[0]) / lens_distances[1]
+    expected = np.zeros(31 * 31)
+    for redshift, source in zip(source_redshifts, sources):
+        source_distance = distance(redshift).value
+        factor = 1.0
+        for position, strength, ray_position in zip(lens_distances, physical, [1.0, second_position]):
+            if position < source_distance:
+                factor -= strength * ray_position * (source_distance - position) / source_distance
+        expected += LightModel(['GAUSSIAN']).surface_brightness(
+            geometry[0] * factor, geometry[1] * factor, [source],
+        ) * grid.pixel_area
+    np.testing.assert_allclose(actual, expected.reshape(31, 31), rtol=1e-13, atol=1e-15)
+
+
+def test_multiple_source_rendering_preserves_psf_additivity_and_lens_light():
+    from astropy.cosmology import Planck18
+
+    geometry = make_grid_with_coordtransform(31, 0.05)
+    grid = PixelGrid(31, 31, geometry[2], geometry[3], geometry[6])
+    lens = LensModel(['SIS'], multi_plane=True, lens_redshift_list=[0.3], z_source=2.0, cosmo=Planck18)
+    psf = PSF('GAUSSIAN', fwhm=0.1)
+    light = LightModel(['GAUSSIAN'])
+    sources = [{'amp': 1.0, 'sigma': 0.08}, {'amp': 0.6, 'sigma': 0.12}]
+    source_redshifts = [0.2, 1.5]
+    numerics = {'supersampling_factor': 3}
+    joint = ImageModel(grid, psf, lens, LightModel(['GAUSSIAN', 'GAUSSIAN']), light,
+                       kwargs_numerics=numerics, source_redshift_list=source_redshifts)
+    parameters = [{'theta_E': 0.2}]
+    lens_light = [{'amp': 0.3, 'sigma': 0.15}]
+    image = joint.image(parameters, sources, lens_light)
+    expected = joint.lens_surface_brightness(lens_light)
+    for redshift, source in zip(source_redshifts, sources):
+        renderer = ImageModel(grid, psf, lens, light, LightModel([]), kwargs_numerics=numerics,
+                              source_redshift_list=[redshift])
+        expected += renderer.image(parameters, [source], [])
+    np.testing.assert_allclose(image, expected, rtol=1e-14, atol=1e-15)
+    foreground = ImageModel(grid, psf, lens, light, LightModel([]), kwargs_numerics=numerics,
+                            source_redshift_list=[0.2]).image(parameters, sources[:1], [])
+    unlensed = ImageModel(grid, psf, LensModel([]), light, LightModel([]),
+                          kwargs_numerics=numerics).image([], sources[:1], [])
+    np.testing.assert_array_equal(foreground, unlensed)
+
+
+@pytest.mark.parametrize('redshifts', [[], [0.0], [np.nan], [np.inf], [-1.0]])
+def test_multiple_source_renderer_validates_redshifts(redshifts):
+    from astropy.cosmology import Planck18
+
+    geometry = make_grid_with_coordtransform(11, 0.1)
+    grid = PixelGrid(11, 11, geometry[2], geometry[3], geometry[6])
+    lens = LensModel([], multi_plane=True, lens_redshift_list=[], z_source=2.0, cosmo=Planck18)
+    with pytest.raises(ValueError, match='source redshift|Source redshifts'):
+        ImageModel(grid, PSF(), lens, LightModel(['GAUSSIAN']), LightModel([]),
+                   source_redshift_list=redshifts)
+
+
+def test_multiple_source_example_uses_native_scene_and_saves_reproducible_outputs(tmp_path):
+    import json
+    from pathlib import Path
+    import runpy
+
+    example = runpy.run_path(Path(__file__).parents[1] / 'examples' / 'multiple_source_planes.py')
+    images, extent, inputs = example['build_scene']()
+    np.testing.assert_allclose(images[2], images[0] + images[1], rtol=1e-14, atol=1e-15)
+    assert np.isfinite(images).all() and np.all(images >= 0.0)
+    assert all(image.max() > 0.0 for image in images)
+    assert inputs['simulated'] and inputs['source_redshifts'] == [0.5, 1.5]
+    outputs = example['run_example'](tmp_path)
+    assert outputs['figure'].is_file()
+    with np.load(outputs['data'], allow_pickle=False) as saved:
+        np.testing.assert_array_equal(saved['images'], images)
+        np.testing.assert_array_equal(saved['extent'], extent)
+        assert json.loads(str(saved['inputs'])) == inputs
+    try:
+        import bokeh
+    except ImportError:
+        pass
+    else:
+        assert 'Combined image' in outputs['bokeh'].read_text(encoding='utf-8')
+
+
 def test_native_pixel_coordinates_roundtrip_and_psf_conserves_flux():
     geometry = make_grid_with_coordtransform(51, 0.1)
     grid = PixelGrid(51, 51, geometry[2], geometry[3], geometry[6])
