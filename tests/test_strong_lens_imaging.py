@@ -134,6 +134,36 @@ def test_multiple_source_example_uses_native_scene_and_saves_reproducible_output
         assert 'Combined image' in outputs['bokeh'].read_text(encoding='utf-8')
 
 
+def test_halo_redshift_comparison_fits_far_source_and_holds_near_source_fixed(tmp_path):
+    import json
+    from pathlib import Path
+    import runpy
+
+    example = runpy.run_path(Path(__file__).parents[1] / 'examples' / 'multiple_source_planes.py')
+    truth, before, fitted, extent, metadata = example['compare_halo_redshifts']()
+    assert truth.shape == before.shape == fitted.shape == (2, 101, 101)
+    assert np.isfinite(fitted).all() and np.all(fitted >= 0)
+    assert metadata['fractional_l2_after'][1] < metadata['fractional_l2_before'][1]
+    assert metadata['fractional_l2_after'][0] > metadata['fractional_l2_after'][1]
+    assert len(metadata['fit_active_bounds']) == 4
+    assert metadata['fitted_source_redshift'] == 1.5
+    assert metadata['held_out_source_redshift'] == 0.5
+    assert metadata['source_light_and_macro_lens_fixed']
+    for source_index in range(2):
+        expected = np.linalg.norm(fitted[source_index] - truth[source_index]) / np.linalg.norm(truth[source_index])
+        assert metadata['fractional_l2_after'][source_index] == pytest.approx(expected)
+    example['run_halo_redshift_comparison'].__globals__['compare_halo_redshifts'] = (
+        lambda: (truth, before, fitted, extent, metadata))
+    outputs = example['run_halo_redshift_comparison'](tmp_path)
+    with np.load(outputs['data'], allow_pickle=False) as saved:
+        np.testing.assert_array_equal(saved['truth'], truth)
+        np.testing.assert_array_equal(saved['before'], before)
+        np.testing.assert_array_equal(saved['fitted'], fitted)
+        np.testing.assert_array_equal(saved['residual'], fitted - truth)
+        assert json.loads(str(saved['inputs']))['comparison_is_noiseless']
+    assert outputs['figure'].stat().st_size > 1000
+
+
 def test_native_pixel_coordinates_roundtrip_and_psf_conserves_flux():
     geometry = make_grid_with_coordtransform(51, 0.1)
     grid = PixelGrid(51, 51, geometry[2], geometry[3], geometry[6])

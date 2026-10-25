@@ -1,7 +1,8 @@
 """Render two synthetic source planes through one reference-normalized lens scene."""
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.optimize import least_squares
 
 from chalcedon import ImageModel, LensModel, LightModel, PixelGrid, PSF
 from chalcedon.imaging import make_grid_with_coordtransform
@@ -58,6 +60,110 @@ def build_scene():
         'pixel_width_arcsec': pixel_width, 'supersampling_factor': 3,
     }
     return np.stack(images), (-half_width, half_width, -half_width, half_width), inputs
+
+
+def compare_halo_redshifts():
+    """Fit a lens-plane TNFW halo to a synthetic line-of-sight-halo image."""
+    images, extent, inputs = build_scene()
+    pixel_count = images.shape[-1]
+    pixel_width = inputs['pixel_width_arcsec']  # [arcsec]
+    geometry = make_grid_with_coordtransform(pixel_count, pixel_width)
+    grid = PixelGrid(pixel_count, pixel_count, geometry[2], geometry[3], geometry[6])
+    lens = LensModel(['SIS', 'TNFW'], multi_plane=True, lens_redshift_list=[0.3, 0.3],
+                     z_source=inputs['reference_source_redshift'], cosmo=Planck18)
+    renderers = [ImageModel(
+        grid, PSF('GAUSSIAN', fwhm=inputs['psf_fwhm_arcsec']), lens,
+        LightModel(['GAUSSIAN']), LightModel([]),
+        kwargs_numerics={'supersampling_factor': inputs['supersampling_factor']},
+        source_redshift_list=[redshift],
+    ) for redshift in inputs['source_redshifts']]
+    halo = inputs['lens_parameters'][1]
+    initial = np.array([halo[name] for name in ('Rs', 'alpha_Rs', 'center_x', 'center_y')])
+
+    def render(parameters, source_index):
+        candidate = dict(halo, **dict(zip(('Rs', 'alpha_Rs', 'center_x', 'center_y'), parameters)))
+        return renderers[source_index].image(
+            [inputs['lens_parameters'][0], candidate], [inputs['source_parameters'][source_index]], [])
+
+    scale = np.linalg.norm(images[1])
+    fit = least_squares(lambda parameters: ((render(parameters, 1) - images[1]) / scale).ravel(),
+                        initial, bounds=([pixel_width / 3, 0, extent[0], extent[2]],
+                                         [extent[1], 1, extent[1], extent[3]]),
+                        x_scale='jac', max_nfev=200)
+    if not fit.success:
+        raise RuntimeError(f'Halo-redshift comparison failed to converge: {fit.message}')
+    before = np.stack([render(initial, source_index) for source_index in range(2)])
+    fitted = np.stack([render(fit.x, source_index) for source_index in range(2)])
+    truth = images[:2]
+    fractions = lambda prediction: [float(np.linalg.norm(model - actual) / np.linalg.norm(actual))
+                                    for model, actual in zip(prediction, truth)]
+    metadata = dict(inputs, comparison_is_noiseless=True, fitted_halo_redshift=0.3,
+                    fitted_source_redshift=1.5, held_out_source_redshift=0.5,
+                    fitted_parameter_names=['Rs', 'alpha_Rs', 'center_x', 'center_y'],
+                    fitted_parameters=fit.x.tolist(), initial_parameters=initial.tolist(),
+                    fractional_l2_before=fractions(before), fractional_l2_after=fractions(fitted),
+                    optimizer_evaluations=int(fit.nfev), source_light_and_macro_lens_fixed=True,
+                    fit_active_bounds=fit.active_mask.tolist(),
+                    optimizer='scipy.optimize.least_squares',
+                    fit_lower_bounds=[pixel_width / 3, 0, extent[0], extent[2]],
+                    fit_upper_bounds=[extent[1], 1, extent[1], extent[3]],
+                    residual_definition='fitted lens-plane image minus line-of-sight image')
+    return truth, before, fitted, extent, metadata
+
+
+def run_halo_redshift_comparison(output_directory, typefileplot='png', typeplotback='white'):
+    """Save measured image differences for a specified synthetic halo-redshift fit."""
+    if typefileplot not in {'png', 'pdf'}:
+        raise ValueError('typefileplot must be png or pdf')
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')
+    stem = Path(output_directory) / f'halo_redshift_comparison_{timestamp}'
+    paths = {'figure': stem.with_suffix('.' + typefileplot), 'data': stem.with_suffix('.npz')}
+    if any(path.exists() for path in paths.values()):
+        raise FileExistsError('Refusing to overwrite an earlier halo-redshift comparison')
+    print(f'Reading from {Path(__file__).name}...')
+    source_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    truth, before, fitted, extent, inputs = compare_halo_redshifts()
+    if hashlib.sha256(Path(__file__).read_bytes()).hexdigest() != source_digest:
+        raise RuntimeError('Example source changed during the fit; outputs were left unwritten')
+    inputs['source_sha256'] = source_digest
+    inputs['fit_bounds_description'] = (
+        'Angular scale from one third pixel to field half-width; nonnegative reduced '
+        'normalization up to the 1 arcsec host Einstein angle; halo center inside the image field. '
+        'Truncation radius stays fixed at 0.5 arcsec. These are illustrative fit bounds.')
+    residual = fitted - truth
+    maximum = float(max(truth.max(), fitted.max()))
+    residual_scale = float(np.abs(residual).max())
+    figure, axes = plt.subplots(2, 3, figsize=(10.5, 6.8), sharex=True, sharey=True,
+                                constrained_layout=True)
+    for source_index, redshift in enumerate(inputs['source_redshifts']):
+        for axis, image in zip(axes[source_index, :2], (truth[source_index], fitted[source_index])):
+            brightness = axis.imshow(image, origin='lower', extent=extent, cmap='viridis',
+                                     vmin=0, vmax=maximum)
+        difference = axes[source_index, 2].imshow(
+            residual[source_index], origin='lower', extent=extent, cmap='RdBu_r',
+            vmin=-residual_scale, vmax=residual_scale)
+        fraction = inputs['fractional_l2_after'][source_index]
+        role = 'held out' if source_index == 0 else 'fitted'
+        axes[source_index, 0].set_ylabel(f'Source z = {redshift} ({role})\nImage y [arcsec]')
+        axes[source_index, 2].text(0.03, 0.96, f'Relative difference {fraction:.1%}',
+                                   transform=axes[source_index, 2].transAxes, va='top')
+    axes[0, 0].set_title('LOS halo at z = 0.7')
+    axes[0, 1].set_title('Lens-plane fit at z = 0.3')
+    axes[0, 2].set_title('Fit minus LOS image')
+    for axis in axes.flat:
+        axis.grid(False)
+    for axis in axes[1]:
+        axis.set_xlabel('Image x [arcsec]')
+    figure.colorbar(brightness, ax=axes[:, :2].ravel().tolist(),
+                    label='Flux per pixel [arbitrary units]', shrink=0.8)
+    figure.colorbar(difference, ax=axes[:, 2].tolist(),
+                    label='Flux difference [arbitrary units]', shrink=0.8)
+    save_figure(figure, paths['figure'], typefileplot=typefileplot,
+                typeplotback=typeplotback, close_figure=True)
+    print(f"Writing to {paths['data']}...")
+    np.savez_compressed(paths['data'], truth=truth, before=before, fitted=fitted,
+                        residual=residual, extent=extent, inputs=json.dumps(inputs))
+    return paths
 
 
 def run_example(output_directory, typefileplot='png', typeplotback='white'):
@@ -110,8 +216,11 @@ def main():
     parser.add_argument('--typeplotback', choices=('white', 'dark'), default='white')
     parser.add_argument('--output-directory', type=Path,
                         default=get_repository_path() / 'examples' / 'visuals')
+    parser.add_argument('--compare-halos', action='store_true',
+                        help='fit a lens-plane halo to a synthetic line-of-sight-halo image')
     arguments = parser.parse_args()
-    run_example(arguments.output_directory, arguments.typefileplot, arguments.typeplotback)
+    runner = run_halo_redshift_comparison if arguments.compare_halos else run_example
+    runner(arguments.output_directory, arguments.typefileplot, arguments.typeplotback)
 
 
 if __name__ == '__main__':

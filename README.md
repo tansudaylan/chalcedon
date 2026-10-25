@@ -2,8 +2,11 @@
 
 The name comes from [ancient Chalcedon](https://en.wikipedia.org/wiki/Chalcedon), in present-day Kadikoy, Istanbul. Here, Chalcedon names the lens-physics layer that turns a mass distribution into deflections and lensed images.
 
-## Purpose
-I use Chalcedon to follow light through a specified lens configuration. Give it a host lens, a source, subhalos, and external shear, and calculate the resulting deflections, magnifications, critical curves, and caustics. The arcs look better when I can also inspect the lens equation that produced them.
+## Overview
+Follow light through a specified lens configuration with Chalcedon. Provide a
+host lens, source, subhalos, and external shear to calculate deflections,
+magnifications, critical curves, and caustics. Inspect the lens equation behind
+the resulting arcs.
 
 ## Scope
 The calculations range from analytic deflection profiles to strong-lens image rendering. I keep them here so the modeling and inference packages can use the same lens physics.
@@ -25,8 +28,8 @@ Elliptical halo profiles are integrated directly from their projected density us
 
 ## Multiple source planes
 
-I can render extended light components at different source redshifts in one
-image by passing `source_redshift_list` to `ImageModel`, with one redshift per
+Render extended light components at different source redshifts in one image by
+passing `source_redshift_list` to `ImageModel`, with one redshift per
 source-light profile. The lens must use `multi_plane=True`, an Astropy cosmology,
 and a reference `z_source` behind every lens plane. Its mass-profile parameters
 specify reduced deflections at that reference redshift. Changing a component's
@@ -53,6 +56,41 @@ sum share one brightness scale and a Gaussian PSF. Timestamped figures and
 matching compressed numerical arrays go directly into the example's `visuals/`
 directory. With the Bokeh extra installed, each run also writes a self-contained
 interactive view. Existing outputs are preserved.
+
+## Halo redshift ambiguity
+
+```bash
+python examples/multiple_source_planes.py --compare-halos --typefileplot png
+```
+
+This synthetic comparison fits a lens-plane truncated NFW halo at redshift 0.3
+to an image generated with a line-of-sight halo at redshift 0.7. I keep the
+macro lens, source light, and PSF fixed while fitting the halo's angular scale,
+normalization, and position using only the source at redshift 1.5. The same
+fitted halo then predicts the nearer source at redshift 0.5, which lies in
+front of the original line-of-sight halo.
+
+![Synthetic line-of-sight and lens-plane halo images, with residuals for a fitted distant source and a held-out nearer source](examples/visuals/halo_redshift_comparison_20261025_203918_242821.png)
+
+The far-source relative image difference falls from 20% to 2.6%. For the
+nearer source, the fitted model differs by 7.3%. Each percentage is the
+Euclidean norm of the image residual divided by the norm of the corresponding
+synthetic reference image. Similar far-source images therefore leave a
+larger mismatch at the second source distance in this example.
+
+The fit reaches the upper bounds on scale radius and horizontal position.
+The allowed angular scale spans one third of a pixel to the field half-width,
+the halo center stays within the image field, and the nonnegative reduced
+normalization is bounded by the host's 1 arcsec Einstein angle. The truncation
+radius remains fixed at 0.5 arcsec. These illustrative bounds constrain the
+reported minimum. The calculation has neither image noise nor a posterior
+over lens and source properties, so the residuals alone cannot establish
+observational distinguishability.
+
+Timestamped NPZ files retain the original, initial, and fitted images,
+residuals, source and lens parameters, fit bounds and active-bound flags,
+PSF and pixel settings, and the generating script's hash. Existing files are
+preserved. Pass `--typefileplot pdf` for a vector figure.
 
 ## Installation
 
