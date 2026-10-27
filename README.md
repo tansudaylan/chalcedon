@@ -134,9 +134,10 @@ python examples/microlens_caustic.py --animate --frames 48 --typeplotback dark
 ![Native lens and source motion with critical curves, caustics, and image positions](examples/visuals/moving_lens_20261025_142326.gif)
 
 The Einstein angle is 0.9 arcsec and the external shear components are 0.18
-and 0.04. The two objects follow prescribed angular tracks rather than a
-dynamical orbit. Each frame solves the lens equation anew. Both viewports stay
-fixed, and the legend remains outside the data panels. New GIFs and their
+and 0.04. Across the frames, phase $\phi$ advances uniformly from 0 to $2\pi$.
+The lens center follows $(0.15\sin\phi,\,0.08\cos\phi)$ arcsec, while the
+source follows $(0.30\cos\phi,\,0.13\sin\phi)$ arcsec. Each frame solves the
+lens equation anew. Both viewports stay fixed, and the legend remains outside the data panels. New GIFs and their
 numeric JSON sidecars receive timestamps and preserve earlier outputs.
 The sidecar records positions, phases, lens-equation residuals, model settings,
 and the source-code hash. `--animation-output` selects an explicit new path.
